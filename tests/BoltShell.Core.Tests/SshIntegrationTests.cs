@@ -318,6 +318,36 @@ public sealed class SshIntegrationTests : IClassFixture<LocalSshServer>, IDispos
         return captured!;
     }
 
+    [SkippableFact]
+    public async Task Vim_AcceptsTypedText_AndSaves()
+    {
+        Skip.IfNot(_server.Available, "OpenSSH server (sshd) not installed");
+        Skip.If(!File.Exists("/usr/bin/vim"), "vim not installed");
+        var file = Path.Combine(_workDir, "vim-test.txt");
+        await using var manager = new SessionManager(_connector);
+        var session = manager.CreateTerminal(Spec(_server.ClientKey));
+        var output = new StringBuilder();
+        session.DataReceived += data => { lock (output) output.Append(Encoding.UTF8.GetString(data)); };
+        await session.ConnectAsync(100, 30);
+
+        await session.WriteAsync($"vim -u NONE -N {file}\r");
+        await Task.Delay(1500); // vim starts and switches to the alternate screen
+        foreach (var key in new[] { "i", "hello from vim", "\u001b", ":wq\r" })
+        {
+            await session.WriteAsync(key);
+            await Task.Delay(300);
+        }
+        for (var i = 0; i < 50 && !File.Exists(file); i++)
+            await Task.Delay(100);
+        await session.DisconnectAsync();
+
+        string log;
+        lock (output)
+            log = output.ToString();
+        Assert.True(File.Exists(file), "vim did not write the file. Output:\n" + log);
+        Assert.Equal("hello from vim", File.ReadAllText(file).TrimEnd('\n'));
+    }
+
     private static async Task<string> RunEchoAsync(SshTerminalSession session, string tag)
     {
         var output = new StringBuilder();

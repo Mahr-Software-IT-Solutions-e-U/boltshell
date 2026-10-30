@@ -40,6 +40,37 @@ window.pbssh = {
             });
     },
 
+    // xterm.js 6.0 (bundled with XtermBlazor 2.4) throws "i is not defined" in its handler for mode requests
+    // (DECRQM, CSI ? Ps $ p), which programs like vim send. The failed write never completes and the terminal stops
+    // updating. These handlers run first and answer the request themselves (DECRPM: 1 set, 2 reset, 0 unknown).
+    patchModeRequests(terminalId) {
+        let term;
+        try {
+            term = XtermBlazor.getTerminalObjectById(terminalId).terminal;
+        } catch {
+            return;
+        }
+        if (term._pbsshModeRequests) return;
+        const report = (isPrivate, params) => {
+            const mode = Number(Array.isArray(params[0]) ? params[0][0] : params[0]) || 0;
+            const m = term.modes;
+            const known = isPrivate
+                ? {
+                    1: m.applicationCursorKeysMode, 6: m.originMode, 7: m.wraparoundMode, 45: m.reverseWraparoundMode,
+                    66: m.applicationKeypadMode, 9: m.mouseTrackingMode === "x10", 1000: m.mouseTrackingMode === "vt200",
+                    1002: m.mouseTrackingMode === "drag", 1003: m.mouseTrackingMode === "any", 1004: m.sendFocusMode,
+                    2004: m.bracketedPasteMode, 2026: m.synchronizedOutputMode,
+                }
+                : { 4: m.insertMode };
+            const state = mode in known ? (known[mode] ? 1 : 2) : 0;
+            term.input(`\x1b[${isPrivate ? "?" : ""}${mode};${state}$y`, false);
+            return true;
+        };
+        term.parser.registerCsiHandler({ prefix: "?", intermediates: "$", final: "p" }, params => report(true, params));
+        term.parser.registerCsiHandler({ intermediates: "$", final: "p" }, params => report(false, params));
+        term._pbsshModeRequests = true;
+    },
+
     unobserve(element) {
         element?._pbsshObserver?.disconnect();
         if (element) element._pbsshObserver = null;
