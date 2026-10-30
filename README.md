@@ -1,4 +1,8 @@
-# BoltShell
+<p align="center">
+  <img src="src/BoltShell.App/Assets/icon/icon-256.png" width="112" alt="BoltShell icon">
+</p>
+
+<h1 align="center">BoltShell</h1>
 
 **SSH & RDP for Passbolt** – a desktop app (Windows, macOS, Linux) for SSH terminals, file transfer (SFTP/SCP)
 and remote desktops, with all credentials coming from your self-hosted [Passbolt](https://www.passbolt.com/).
