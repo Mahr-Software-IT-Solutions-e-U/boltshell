@@ -1,0 +1,58 @@
+<MudDialog>
+    <DialogContent>
+        <form @onsubmit="Submit" @onsubmit:preventDefault style="display:flex; flex-direction:column; gap:14px; padding-top:4px">
+            @if (!string.IsNullOrEmpty(Message))
+            {
+                <p style="margin:0; font-size:13px; line-height:1.5; color:var(--text-2)">@Message</p>
+            }
+            <label class="field">@Label
+                <input class="input" type="@(Secret ? "password" : "text")" @bind="_value" @bind:event="oninput" autofocus />
+            </label>
+            <div style="display:flex; justify-content:flex-end; gap:8px">
+                <button type="button" class="btn" @onclick="() => MudDialog.Cancel()">Abbrechen</button>
+                <button type="submit" class="btn btn-primary" disabled="@string.IsNullOrEmpty(_value)">OK</button>
+            </div>
+        </form>
+    </DialogContent>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public string? Message { get; set; }
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public string? InitialValue { get; set; }
+    [Parameter] public bool Secret { get; set; }
+
+    private string? _value;
+
+    protected override void OnInitialized() => _value = InitialValue;
+
+    private void Submit()
+    {
+        if (!string.IsNullOrEmpty(_value))
+            MudDialog.Close(DialogResult.Ok(_value));
+    }
+
+    /// <summary>Shows the prompt and returns the entered text, or null if cancelled.</summary>
+    public static async Task<string?> ShowAsync(IDialogService dialogs, string title, string label, string? message = null,
+        bool secret = false, string? initialValue = null)
+    {
+        var parameters = new DialogParameters<TextPromptDialog>
+        {
+            { d => d.Label, label },
+            { d => d.Message, message },
+            { d => d.Secret, secret },
+            { d => d.InitialValue, initialValue },
+        };
+        var dialog = await dialogs.ShowAsync<TextPromptDialog>(title, parameters, new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true });
+        var result = await dialog.Result;
+        return result is { Canceled: false, Data: string value } ? value : null;
+    }
+
+    /// <summary>A yes/no confirmation in the app's style.</summary>
+    public static async Task<bool> ConfirmAsync(IDialogService dialogs, string title, string message, string confirmText)
+    {
+        var result = await dialogs.ShowMessageBoxAsync(title, message, yesText: confirmText, cancelText: "Abbrechen");
+        return result == true;
+    }
+}

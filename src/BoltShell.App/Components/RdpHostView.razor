@@ -1,0 +1,264 @@
+@using System.Globalization
+@implements IDisposable
+@inject AccountManager Accounts
+@inject RdpProxy Proxy
+@inject WorkspaceState State
+@inject IDialogService Dialogs
+
+<div class="page">
+    <header class="page-header" data-drag>
+        <button type="button" class="btn btn-sm" @onclick="OnBack" disabled="@_running"><Icon Name="back" Size="14" StrokeWidth="2.2" />Zurück</button>
+        <span class="muted" style="font-size:13px">Hosts</span>
+        <span style="color:var(--dim)" aria-hidden="true">›</span>
+        <span style="font-size:13px; font-weight:600">RDP-Host anlegen</span>
+        <span style="margin-left:auto"></span>
+        <WindowControls />
+    </header>
+
+    <form class="page-body" style="padding-top:32px" @onsubmit="SaveAsync" @onsubmit:preventDefault>
+        <div class="cols">
+            <div class="col-main">
+                <section class="card" aria-labelledby="r-conn">
+                    <h2 id="r-conn">Verbindung</h2>
+                    <div style="display:grid; grid-template-columns:repeat(6, minmax(0,1fr)); gap:12px">
+                        <label class="field" style="grid-column:span 6">Name in Passbolt
+                            <input class="input" @bind="_name" @bind:event="oninput" placeholder="z. B. win-01" disabled="@Locked" />
+                        </label>
+                        <label class="field" style="grid-column:span 4">Host oder IP
+                            <input class="input mono" @bind="_host" @bind:event="oninput" @onblur="SuggestName" placeholder="10.0.0.5" disabled="@Locked" />
+                        </label>
+                        <label class="field" style="grid-column:span 2">Port
+                            <input class="input mono" type="number" min="1" max="65535" @bind="_port" disabled="@Locked" />
+                        </label>
+                        <label class="field" style="grid-column:span 2">Domäne (optional)
+                            <input class="input mono" @bind="_domain" @bind:event="oninput" placeholder="CORP" disabled="@Locked" />
+                        </label>
+                        <label class="field" style="grid-column:span 2">Benutzer
+                            <input class="input mono" @bind="_user" @bind:event="oninput" autocomplete="off" disabled="@Locked" />
+                        </label>
+                        <label class="field" style="grid-column:span 2">Passwort
+                            <input class="input" type="password" @bind="_password" @bind:event="oninput" autocomplete="off" disabled="@Locked" />
+                        </label>
+                    </div>
+                </section>
+
+                <section class="card" aria-labelledby="r-pb">
+                    <h2 id="r-pb">Ablage in Passbolt</h2>
+                    <div style="display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:12px">
+                        <label class="field">Passbolt-Konto
+                            <select class="input" value="@_accountId" @onchange="OnAccountChanged" disabled="@Locked">
+                                @foreach (var account in Accounts.Accounts)
+                                {
+                                    <option value="@account.Id">@account.Config.DisplayName@(account.IsUnlocked ? "" : " (gesperrt)")</option>
+                                }
+                            </select>
+                        </label>
+                        <label class="field">Ordner
+                            <select class="input" @bind="_folderId" disabled="@(Locked || SelectedAccount?.IsUnlocked != true)">
+                                <option value="">Kein Ordner (nur für mich)</option>
+                                @foreach (var (id, path) in Folders())
+                                {
+                                    <option value="@id">@path</option>
+                                }
+                            </select>
+                        </label>
+                    </div>
+                    @if (SelectedAccount is { IsUnlocked: false } locked)
+                    {
+                        <div><button type="button" class="btn btn-sm" @onclick="() => UnlockDialog.ShowAsync(Dialogs, locked)"><Icon Name="locked" Size="14" />Konto entsperren</button></div>
+                    }
+                    <label style="display:flex; align-items:flex-start; gap:10px; font-size:13px">
+                        <input type="checkbox" @bind="_pinCertificate" disabled="@Locked" style="accent-color:#F2B84B; margin-top:3px" />
+                        <span><span style="font-weight:500">Server-Zertifikat abrufen und in Passbolt hinterlegen</span><br />
+                            <span class="muted" style="font-size:12px; line-height:1.5">
+                                Speichert den Fingerprint als <span class="mono">rdp_cert_sha256</span>. Dann prüft die App bei jedem im Team
+                                die Identität des Servers, ohne Rückfrage. Braucht Passbolt v5 (Custom Fields).
+                            </span></span>
+                    </label>
+                    <p class="muted" style="margin:0; font-size:12px; line-height:1.5">
+                        Gespeichert wird <span class="mono">@PreviewUri</span>; die Ressource erhält die Freigaben des Ordners.
+                    </p>
+                </section>
+            </div>
+
+            <aside class="col-side" style="display:flex; flex-direction:column; gap:16px">
+                @if (_certificate is { } cert)
+                {
+                    <section class="card" aria-labelledby="r-cert" style="gap:8px">
+                        <h2 id="r-cert" style="font-size:14px">Server-Zertifikat</h2>
+                        <span style="font-size:13px">@cert.Subject</span>
+                        <span class="muted" style="font-size:12px">gültig bis @cert.NotAfter.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)</span>
+                        <span class="mono" style="font-size:11px; word-break:break-all">SHA256 @cert.FingerprintHex</span>
+                    </section>
+                }
+                @if (_error is not null)
+                {
+                    <div class="card" role="alert" style="border-color:#5A2626; background:#1C1213; gap:8px">
+                        <h2 style="font-size:14px">Nicht angelegt</h2>
+                        <p style="margin:0; font-size:13px; color:#FFB4AB; line-height:1.5">@_error</p>
+                    </div>
+                }
+                @if (_saved is not null)
+                {
+                    <div class="card" role="status" style="border-color:#1F4A33; background:#0F1C15; gap:8px">
+                        <h2 style="font-size:14px; color:#7EE2A8">RDP-Host angelegt</h2>
+                        <p style="margin:0; font-size:13px; line-height:1.5"><span class="mono">@PreviewUri</span> ist in Passbolt gespeichert.</p>
+                        @if (_warning is not null)
+                        {
+                            <p style="margin:0; font-size:12px; color:#F2C66B; line-height:1.5">@_warning</p>
+                        }
+                    </div>
+                    <div style="display:flex; gap:10px">
+                        <button type="button" class="btn btn-lg" style="flex:1" @onclick="Reset">Weiteren Host</button>
+                        <button type="button" class="btn btn-primary btn-lg" style="flex:2" @onclick="Connect">Verbinden</button>
+                    </div>
+                }
+                else
+                {
+                    <button type="submit" class="btn btn-primary btn-lg" disabled="@(_running || !CanSave)">
+                        @(_running ? _status : "In Passbolt anlegen")
+                    </button>
+                    @if (!_running && !CanSave)
+                    {
+                        <span class="muted" style="font-size:12px">@MissingHint</span>
+                    }
+                }
+            </aside>
+        </div>
+    </form>
+</div>
+
+@code {
+    [Parameter] public EventCallback OnBack { get; set; }
+
+    private string? _name;
+    private string? _host;
+    private int _port = 3389;
+    private string? _domain;
+    private string? _user;
+    private string? _password;
+    private string? _accountId;
+    private string _folderId = "";
+    private bool _pinCertificate = true;
+
+    private bool _running;
+    private string _status = "";
+    private string? _error;
+    private string? _warning;
+    private RdpServerCertificate? _certificate;
+    private (NewRdpHost Host, string ResourceId)? _saved;
+
+    private AccountSession? SelectedAccount => _accountId is null ? null : Accounts.Find(_accountId);
+    private bool Locked => _running || _saved is not null;
+
+    private bool CanSave =>
+        !string.IsNullOrWhiteSpace(_name) && !string.IsNullOrWhiteSpace(_host) && !string.IsNullOrWhiteSpace(_user)
+        && !string.IsNullOrEmpty(_password) && _port is > 0 and <= 65535 && SelectedAccount?.IsUnlocked == true;
+
+    private string MissingHint =>
+        SelectedAccount?.IsUnlocked != true ? "Das gewählte Passbolt-Konto ist gesperrt." : "Bitte Name, Host, Benutzer und Passwort angeben.";
+
+    private NewRdpHost BuildHost() => new(_name?.Trim() ?? "", new RdpTarget(_host?.Trim() ?? "host", _port),
+        _user?.Trim() ?? "user", string.IsNullOrWhiteSpace(_domain) ? null : _domain.Trim(), _password ?? "", _certificate);
+
+    private string PreviewUri => BuildHost().ToResource(null).Uris[0];
+
+    protected override void OnInitialized()
+    {
+        Accounts.Changed += OnChanged;
+        _accountId = (Accounts.Accounts.FirstOrDefault(a => a.IsUnlocked) ?? Accounts.Accounts.FirstOrDefault())?.Id;
+    }
+
+    private IEnumerable<(string Id, string Path)> Folders() =>
+        SelectedAccount is { } account
+            ? account.Folders.Keys.Select(id => (id, account.FolderPath(id))).OrderBy(f => f.Item2, StringComparer.OrdinalIgnoreCase)
+            : [];
+
+    private void OnAccountChanged(ChangeEventArgs e)
+    {
+        _accountId = e.Value?.ToString();
+        _folderId = "";
+    }
+
+    private void SuggestName()
+    {
+        if (string.IsNullOrWhiteSpace(_name) && !string.IsNullOrWhiteSpace(_host))
+            _name = _host.Trim();
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_running || !CanSave || SelectedAccount is not { } account)
+            return;
+        _running = true;
+        _error = null;
+        try
+        {
+            if (_pinCertificate)
+            {
+                _status = "Rufe Zertifikat ab …";
+                StateHasChanged();
+                _certificate = await Task.Run(() => RdpProbe.GetCertificateAsync(new RdpTarget(_host!.Trim(), _port)));
+                StateHasChanged();
+                var confirmed = await TextPromptDialog.ConfirmAsync(Dialogs, "Server-Zertifikat bestätigen",
+                    $"Stimmt der rechts angezeigte Fingerprint von {_certificate.Subject} mit dem Server überein? " +
+                    "Er wird in Passbolt als Identität des Servers hinterlegt.",
+                    "Übernehmen");
+                if (!confirmed)
+                {
+                    _error = "Zertifikat nicht bestätigt – nichts gespeichert.";
+                    return;
+                }
+            }
+            else
+            {
+                _certificate = null;
+            }
+
+            _status = "Speichere in Passbolt …";
+            StateHasChanged();
+            var host = BuildHost();
+            var (id, warning) = await account.CreateResourceAsync(host.ToResource(string.IsNullOrEmpty(_folderId) ? null : _folderId));
+            _warning = warning;
+            _saved = (host, id);
+        }
+        catch (Exception ex)
+        {
+            _error = ex switch
+            {
+                System.Net.Sockets.SocketException se => $"Server nicht erreichbar ({se.SocketErrorCode}).",
+                OperationCanceledException => "Zeitüberschreitung beim Verbinden.",
+                System.Security.Authentication.AuthenticationException => "TLS-Handshake mit dem Server fehlgeschlagen.",
+                _ => ex.Message,
+            };
+        }
+        finally
+        {
+            _running = false;
+        }
+    }
+
+    private void Connect()
+    {
+        if (_saved is not { } saved || SelectedAccount is not { } account)
+            return;
+        var host = saved.Host;
+        var spec = new RdpConnectionSpec(host.Name, host.Target, host.Username, host.Domain, host.Password,
+            host.Certificate is { } c ? [c.FingerprintSha256] : []);
+        State.OpenRdp(Proxy, spec, account.Id, saved.ResourceId);
+        OnBack.InvokeAsync();
+    }
+
+    private void Reset()
+    {
+        _saved = null;
+        _error = _warning = null;
+        _certificate = null;
+        _name = _host = _password = null;
+        _port = 3389;
+    }
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Accounts.Changed -= OnChanged;
+}

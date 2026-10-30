@@ -1,0 +1,11 @@
+@* App icon from the design ("Schild massiv"), header variant. *@
+<svg aria-hidden="true" width="@Size" height="@Size" viewBox="0 0 512 512" style="flex:none">
+    <rect x="8" y="8" width="496" height="496" rx="116" fill="#1B1F25" stroke="#2E333B" stroke-width="16"></rect>
+    <path d="M256 84 L398 134 V250 C398 338 334 398 256 430 C178 398 114 338 114 250 V134 Z" fill="#F2B84B" stroke="#F2B84B" stroke-width="24" stroke-linejoin="round"></path>
+    <polyline points="186,204 242,256 186,308" fill="none" stroke="#15181D" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"></polyline>
+    <line x1="264" y1="316" x2="326" y2="316" stroke="#15181D" stroke-width="44" stroke-linecap="round"></line>
+</svg>
+
+@code {
+    [Parameter] public int Size { get; set; } = 30;
+}

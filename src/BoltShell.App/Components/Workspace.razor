@@ -1,0 +1,322 @@
+@implements IDisposable
+@inject AccountManager Accounts
+@inject SessionManager Sessions
+@inject WorkspaceState State
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+@inject RdpProxy RdpProxy
+@inject IJSRuntime JS
+@inject UpdateService Updates
+
+<div class="ws">
+    <header class="ws-header" data-drag>
+        <div class="brand">
+            <AppLogo Size="30" />
+            <span class="brand-name">BoltShell</span>
+        </div>
+        <label class="quick">
+            <Icon Name="search" />
+            <input id="quick-connect" type="text" aria-label="Host suchen oder Schnellverbindung" autocomplete="off" spellcheck="false"
+                   placeholder="Host suchen oder user@host:port verbinden"
+                   @bind="_query" @bind:event="oninput" @onkeydown="OnQueryKeyDown" />
+            <span class="kbd">Strg K</span>
+        </label>
+        <div class="header-right">
+            @foreach (var account in Accounts.Accounts)
+            {
+                <button type="button" class="chip @(account.IsUnlocked ? "chip-ok" : "chip-locked")" @onclick="() => ToggleLockAsync(account)"
+                        title="@(account.IsUnlocked ? "Entsperrt – klicken zum Sperren" : "Gesperrt – klicken zum Entsperren")">
+                    <Icon Name="@(account.IsUnlocked ? "unlocked" : "locked")" Size="13" StrokeWidth="2.2" />
+                    @account.Config.DisplayName@(account.IsUnlocked ? "" : " · gesperrt")
+                </button>
+            }
+            <button type="button" class="btn btn-icon" aria-label="Passbolt-Konten verwalten" title="Passbolt-Konten" @onclick="OnManageAccounts">
+                <Icon Name="settings" Size="17" />
+            </button>
+            <WindowControls />
+        </div>
+    </header>
+
+    <div class="ws-body">
+        <HostSidebar Filter="@_query" SelectedResourceId="@State.Active?.ResourceId" OnOpen="OpenHostAsync" OnProvision="OnProvisionHost" OnCreateRdp="OnCreateRdpHost" />
+
+        <main class="ws-main">
+            <div class="tabbar" role="tablist" aria-label="Sitzungen">
+                @foreach (var tab in State.Tabs)
+                {
+                    var active = tab == State.Active;
+                    <div role="tab" aria-selected="@(active ? "true" : "false")" tabindex="0" class="tab @(active ? "active" : "")" @key="tab.Id"
+                         @onclick="() => State.Activate(tab)" title="@($"{(tab.IsRdp ? "RDP" : "SSH")} · {tab.Username}@{tab.HostAndPort}")">
+                        <span class="dot-sm" style="background:@StateColor(tab.State)"></span>
+                        @tab.Title
+                        <button type="button" class="tab-close" aria-label="Sitzung @tab.Title schließen" @onclick="() => CloseTabAsync(tab)" @onclick:stopPropagation>
+                            <Icon Name="close" Size="12" StrokeWidth="2.4" />
+                        </button>
+                    </div>
+                }
+                <button type="button" class="tab-add" aria-label="Neue Sitzung zum selben Host" title="Neue Sitzung zum selben Host"
+                        disabled="@(State.Active is null)" @onclick="DuplicateActive">
+                    <Icon Name="plus" Size="15" />
+                </button>
+                @if (State.Active is { } current)
+                {
+                    <div class="tabbar-right">
+                        @if (current.IsRdp)
+                        {
+                            <button type="button" class="btn btn-sm" disabled="@(current.State != SessionState.Connected)" @onclick="() => CtrlAltDelAsync(current)"
+                                    title="Strg+Alt+Entf an den entfernten Rechner senden">Strg+Alt+Entf</button>
+                        }
+                        else
+                        {
+                            <button type="button" class="btn btn-sm toggle-sftp" aria-pressed="@(current.SftpVisible ? "true" : "false")" @onclick="() => ToggleSftp(current)">
+                                <Icon Name="folder" Size="14" />SFTP-Dateien
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+
+            <div class="ws-content">
+                @foreach (var tab in State.Tabs)
+                {
+                    <div class="session" hidden="@(tab != State.Active)" @key="tab.Id">
+                        <div class="term-wrap">
+                            @if (tab.IsRdp)
+                            {
+                                <RdpTab Tab="tab" Active="@(tab == State.Active)" />
+                            }
+                            else
+                            {
+                                <TerminalTab Session="tab.Terminal!" Active="@(tab == State.Active)" Banner="@Banner(tab)"
+                                             OnTitleChanged="title => OnTerminalTitle(tab, title)" OnSizeChanged="State.Notify" />
+                            }
+                        </div>
+                        @if (tab.Sftp is not null)
+                        {
+                            <div style="display:@(tab.SftpVisible ? "flex" : "none"); flex: 1 1 380px; min-width: 320px; max-width: 520px">
+                                <SftpPanel Tab="tab" />
+                            </div>
+                        }
+                    </div>
+                }
+                @if (State.Tabs.Count == 0)
+                {
+                    <div class="empty">
+                        <Icon Name="terminal" Size="32" />
+                        <h2>Keine offene Sitzung</h2>
+                        <p style="margin:0; max-width:420px; line-height:1.5">
+                            Wähle links einen Host aus oder drücke <span class="kbd">Strg K</span> und gib
+                            <span class="mono">user@host:port</span> ein.
+                        </p>
+                    </div>
+                }
+            </div>
+        </main>
+    </div>
+
+    <footer class="statusbar">
+        @if (State.Active is { } activeTab)
+        {
+            <span style="display:inline-flex; align-items:center; gap:6px">
+                <span class="dot-sm" style="background:@StateColor(activeTab.State)"></span>@StateText(activeTab.State) · @activeTab.HostAndPort
+            </span>
+            <span>Auth: @activeTab.AuthLabel</span>
+            @if (activeTab.Spec?.HasPinnedHostKeys == true || activeTab.Rdp?.Spec.CertificateFingerprints.Count > 0)
+            {
+                <span style="display:inline-flex; align-items:center; gap:5px" title="Server-Identität wird gegen Passbolt geprüft">
+                    <Icon Name="shield" Size="13" />Host-Identität aus Passbolt
+                </span>
+            }
+        }
+        @if (Updates.AvailableVersion is { } newVersion)
+        {
+            <button type="button" class="linklike" style="font-size:12px" disabled="@Updates.IsDownloading" @onclick="InstallUpdateAsync"
+                    title="Lädt die neue Version und startet BoltShell neu">
+                @(Updates.IsDownloading ? $"Update wird geladen … {Updates.Progress} %" : $"Update auf {newVersion} verfügbar – jetzt installieren")
+            </button>
+        }
+        <span>Passbolt: @Accounts.Accounts.Count @(Accounts.Accounts.Count == 1 ? "Konto" : "Konten") · @Accounts.LockedCount gesperrt</span>
+        @if (State.Active is { Terminal: { } term })
+        {
+            <span class="mono" style="margin-left:auto">xterm-256color · UTF-8 · @(term.Size.Columns)×@(term.Size.Rows)</span>
+        }
+        else if (State.Active is { RdpDesktopSize: { } desktop })
+        {
+            <span class="mono" style="margin-left:auto">RDP · @(desktop.Width)×@(desktop.Height)</span>
+        }
+    </footer>
+</div>
+
+@code {
+    [Parameter] public EventCallback OnManageAccounts { get; set; }
+    [Parameter] public EventCallback OnProvisionHost { get; set; }
+    [Parameter] public EventCallback OnCreateRdpHost { get; set; }
+
+    private string? _query;
+
+    protected override void OnInitialized()
+    {
+        State.Changed += OnChanged;
+        Accounts.Changed += OnChanged;
+        Updates.Changed += OnChanged;
+        _ = Updates.CheckAsync();
+    }
+
+    private async Task InstallUpdateAsync()
+    {
+        if (State.Tabs.Count > 0 && !await TextPromptDialog.ConfirmAsync(Dialogs, "Update installieren",
+                $"BoltShell wird für das Update neu gestartet; {State.Tabs.Count} offene Sitzung(en) werden getrennt.", "Installieren"))
+            return;
+        try
+        {
+            await Updates.InstallAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Update fehlgeschlagen: " + ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task OpenHostAsync((AccountSession Account, PassboltResource Resource) host)
+    {
+        var (account, resource) = host;
+        if (!await UnlockDialog.ShowAsync(Dialogs, account))
+            return;
+        if (!SshConnectionMapper.HasSshTarget(resource) && BoltShell.Core.Rdp.RdpConnectionMapper.HasRdpTarget(resource))
+        {
+            try
+            {
+                State.OpenRdp(RdpProxy, await account.GetRdpSpecAsync(resource), account.Id, resource.Id);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"{resource.Name}: {ex.Message}", Severity.Error);
+            }
+            return;
+        }
+        SshConnectionSpec spec;
+        try
+        {
+            spec = await account.GetConnectionSpecAsync(resource);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{resource.Name}: {ex.Message}", Severity.Error);
+            return;
+        }
+        AddTab(spec, account.Id, resource.Id);
+    }
+
+    private void AddTab(SshConnectionSpec spec, string? accountId, string? resourceId) =>
+        State.Open(Sessions, spec, accountId, resourceId);
+
+    private void DuplicateActive()
+    {
+        if (State.Active is { IsRdp: true } rdp)
+            State.OpenRdp(RdpProxy, rdp.Rdp!.Spec, rdp.AccountId, rdp.ResourceId);
+        else if (State.Active is { Spec: { } spec } tab)
+            AddTab(spec, tab.AccountId, tab.ResourceId);
+    }
+
+    private async Task CtrlAltDelAsync(SessionTab tab)
+    {
+        await using var module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/rdp.js");
+        await module.InvokeVoidAsync("ctrlAltDel", tab.Rdp!.Id);
+    }
+
+    private async Task CloseTabAsync(SessionTab tab)
+    {
+        if (tab.Sftp?.Transfers.Any(t => t.State == TransferState.Running) == true
+            && !await TextPromptDialog.ConfirmAsync(Dialogs, "Übertragungen laufen", "Sitzung schließen und laufende Übertragungen abbrechen?", "Schließen"))
+            return;
+        State.Remove(tab);
+        if (tab.Terminal is not null)
+            await Sessions.CloseAsync(tab.Terminal.Id);
+        if (tab.Sftp is not null)
+            await Sessions.CloseAsync(tab.Sftp.Id);
+    }
+
+    private void ToggleSftp(SessionTab tab)
+    {
+        if (tab.Spec is null)
+            return;
+        tab.Sftp ??= Sessions.CreateSftp(tab.Spec);
+        tab.SftpVisible = !tab.SftpVisible;
+        State.Notify();
+    }
+
+    private void OnTerminalTitle(SessionTab tab, string title)
+    {
+        if (tab.UpdateFromTitle(title))
+            State.Notify();
+    }
+
+    private async Task ToggleLockAsync(AccountSession account)
+    {
+        if (account.IsUnlocked)
+            account.Lock();
+        else
+            await UnlockDialog.ShowAsync(Dialogs, account);
+    }
+
+    private async Task OnQueryKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            _query = null;
+            return;
+        }
+        if (e.Key != "Enter" || string.IsNullOrWhiteSpace(_query))
+            return;
+
+        var matches = HostSidebar.Match(Accounts, _query).ToList();
+        if (matches.Count == 1)
+        {
+            _query = null;
+            await OpenHostAsync(matches[0]);
+            return;
+        }
+        if (matches.Count == 0 && SshTarget.TryParseQuick(_query, out var target))
+        {
+            if (await QuickConnectDialog.ShowAsync(Dialogs, target) is { } spec)
+            {
+                _query = null;
+                AddTab(spec, null, null);
+            }
+            return;
+        }
+        if (matches.Count > 1)
+            Snackbar.Add($"{matches.Count} Hosts passen – Suche weiter eingrenzen oder links auswählen.", Severity.Info);
+        else
+            Snackbar.Add("Kein Host gefunden. Für eine direkte Verbindung user@host:port eingeben.", Severity.Info);
+    }
+
+    private static string Banner(SessionTab tab) =>
+        tab.AccountId is null
+            ? "Direkte Verbindung · Passwort nur im Speicher"
+            : $"{(tab.Spec!.Credentials.HasPrivateKey ? "Schlüssel" : "Passwort")} aus Passbolt · {tab.Spec.DisplayName} · nur im Speicher entschlüsselt";
+
+    private static string StateColor(SessionState state) => state switch
+    {
+        SessionState.Connected => "#4ADE80",
+        SessionState.Connecting or SessionState.Created => "#F2B84B",
+        _ => "#FF8A80",
+    };
+
+    private static string StateText(SessionState state) => state switch
+    {
+        SessionState.Connected => "Verbunden",
+        SessionState.Connecting or SessionState.Created => "Verbinde",
+        SessionState.Closed => "Getrennt",
+        _ => "Fehler",
+    };
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        State.Changed -= OnChanged;
+        Accounts.Changed -= OnChanged;
+        Updates.Changed -= OnChanged;
+    }
+}

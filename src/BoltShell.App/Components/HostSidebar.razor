@@ -1,0 +1,179 @@
+@implements IDisposable
+@inject AccountManager Accounts
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+<nav class="sidebar" aria-label="Hosts nach Passbolt-Konto">
+    <div class="sidebar-head">
+        <span class="overline">Hosts</span>
+        @if (!string.IsNullOrWhiteSpace(Filter))
+        {
+            <span class="muted" style="font-size:11px; margin-left:auto; margin-right:6px">Filter: @Filter</span>
+        }
+        <div style="position:relative">
+            <button type="button" class="btn btn-icon btn-sm btn-ghost" aria-label="Host hinzufügen" title="Host hinzufügen"
+                    aria-haspopup="menu" aria-expanded="@(_menuOpen ? "true" : "false")" @onclick="() => _menuOpen = !_menuOpen">
+                <Icon Name="plus" />
+            </button>
+            @if (_menuOpen)
+            {
+                <div class="menu-backdrop" @onclick="() => _menuOpen = false"></div>
+                <div class="menu" role="menu">
+                    <button type="button" role="menuitem" @onclick="() => Choose(OnProvision)">
+                        <Icon Name="server" Size="15" /><span><b>SSH-Host provisionieren</b><br /><span class="muted">Mit Passwort verbinden, Schlüssel einrichten</span></span>
+                    </button>
+                    <button type="button" role="menuitem" @onclick="() => Choose(OnCreateRdp)">
+                        <Icon Name="monitor" Size="15" /><span><b>RDP-Host anlegen</b><br /><span class="muted">Windows-Zugang in Passbolt speichern</span></span>
+                    </button>
+                </div>
+            }
+        </div>
+    </div>
+
+    @foreach (var account in Accounts.Accounts)
+    {
+        var hosts = Filtered(account).ToList();
+        <section style="display:flex; flex-direction:column; gap:2px" @key="account.Id">
+            <div class="acc-head">
+                <span class="dot" style="background:@(account.IsUnlocked ? "#4ADE80" : "#F2B84B")"></span>
+                <div style="display:flex; flex-direction:column; min-width:0">
+                    <span class="acc-name">@account.Config.DisplayName</span>
+                    <span class="acc-url">@Host(account)</span>
+                </div>
+                @if (account.IsUnlocked)
+                {
+                    <button type="button" class="btn btn-icon btn-sm btn-ghost" style="margin-left:auto" aria-label="@account.Config.DisplayName synchronisieren"
+                            title="Synchronisieren" @onclick="() => RefreshAsync(account)" disabled="@_refreshing.Contains(account.Id)">
+                        <Icon Name="refresh" Size="14" />
+                    </button>
+                }
+                else
+                {
+                    <span style="margin-left:auto; font-size:11px; color:#F2C66B">Gesperrt</span>
+                }
+            </div>
+
+            @if (!account.IsUnlocked && account.Resources.Count == 0)
+            {
+                <button type="button" class="btn btn-sm" style="margin:0 6px" @onclick="() => UnlockDialog.ShowAsync(Dialogs, account)">
+                    <Icon Name="locked" Size="14" />Entsperren, um Hosts zu laden
+                </button>
+            }
+            else if (hosts.Count == 0)
+            {
+                <span class="muted" style="font-size:12px; padding:2px 8px">@(string.IsNullOrWhiteSpace(Filter) ? "Keine Ressourcen mit ssh:// oder rdp://." : "Keine Treffer.")</span>
+            }
+
+            @foreach (var resource in hosts)
+            {
+                var (isRdp, addr) = Address(resource);
+                <button type="button" @key="resource.Id"
+                        class="host-row @(resource.Id == SelectedResourceId ? "selected" : "") @(account.IsUnlocked ? "" : "locked")"
+                        title="@(string.IsNullOrEmpty(account.FolderPath(resource.FolderParentId)) ? resource.Name : account.FolderPath(resource.FolderParentId) + " / " + resource.Name)"
+                        @onclick="() => OnOpen.InvokeAsync((account, resource))">
+                    <Icon Name="@(isRdp ? "monitor" : "server")" Color="#9AA1AC" />
+                    <span style="display:flex; flex-direction:column; min-width:0; flex:1">
+                        <span class="host-name">@resource.Name</span>
+                        <span class="host-addr">@addr</span>
+                    </span>
+                    @if (HasField(resource, SshConnectionMapper.HostKeyField) || HasField(resource, BoltShell.Core.Rdp.RdpConnectionMapper.CertificateField))
+                    {
+                        <span title="Host-Identität in Passbolt hinterlegt" style="color:#7EE2A8; display:inline-flex"><Icon Name="shield" Size="13" /></span>
+                    }
+                    @if (isRdp)
+                    {
+                        <span class="tag">rdp</span>
+                    }
+                    else if (HasField(resource, SshConnectionMapper.PrivateKeyField))
+                    {
+                        <span class="tag">key</span>
+                    }
+                </button>
+            }
+        </section>
+    }
+
+    <div class="sidebar-hint">
+        Hosts sind Passbolt-Ressourcen mit einer URI <span class="mono" style="color:var(--text)">ssh://user@host</span>
+        oder <span class="mono" style="color:var(--text)">rdp://user@host</span>.
+    </div>
+</nav>
+
+@code {
+    [Parameter] public string? Filter { get; set; }
+    [Parameter] public string? SelectedResourceId { get; set; }
+    [Parameter] public EventCallback<(AccountSession Account, PassboltResource Resource)> OnOpen { get; set; }
+    [Parameter] public EventCallback OnProvision { get; set; }
+    [Parameter] public EventCallback OnCreateRdp { get; set; }
+
+    private bool _menuOpen;
+
+    private Task Choose(EventCallback action)
+    {
+        _menuOpen = false;
+        return action.InvokeAsync();
+    }
+
+    private readonly HashSet<string> _refreshing = [];
+
+    protected override void OnInitialized() => Accounts.Changed += OnChanged;
+
+    private IEnumerable<PassboltResource> Filtered(AccountSession account) =>
+        account.Hosts.Where(r => Matches(account, r, Filter));
+
+    /// <summary>Hosts across all accounts matching a search query (every word must match).</summary>
+    public static IEnumerable<(AccountSession Account, PassboltResource Resource)> Match(AccountManager accounts, string? query) =>
+        accounts.Accounts.SelectMany(a => a.Hosts.Where(r => Matches(a, r, query)).Select(r => (a, r)));
+
+    private static bool Matches(AccountSession account, PassboltResource r, string? query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+            return true;
+        // A full user@host:port query should still find the matching resource.
+        if (SshTarget.TryParseQuick(query, out var target)
+            && r.Uris.Any(u => SshTarget.TryParse(u, out var t) && string.Equals(t.Host, target.Host, StringComparison.OrdinalIgnoreCase) && t.Port == target.Port))
+            return true;
+        return query.Split(' ', StringSplitOptions.RemoveEmptyEntries).All(term =>
+            r.Name.Contains(term, StringComparison.OrdinalIgnoreCase)
+            || r.Username?.Contains(term, StringComparison.OrdinalIgnoreCase) == true
+            || r.Uris.Any(u => u.Contains(term, StringComparison.OrdinalIgnoreCase))
+            || account.FolderPath(r.FolderParentId).Contains(term, StringComparison.OrdinalIgnoreCase));
+    }
+
+    // SSH wins if a resource has both kinds of URI.
+    private static (bool IsRdp, string Address) Address(PassboltResource r)
+    {
+        if (r.Uris.Select(u => SshTarget.TryParse(u, out var t) ? t : null).FirstOrDefault(t => t is not null) is { } ssh)
+            return (false, $"{ssh.Username ?? r.Username}@{ssh.HostAndPort}");
+        var rdp = r.Uris.Select(u => BoltShell.Core.Rdp.RdpTarget.TryParse(u, out var t) ? t : null).First(t => t is not null)!;
+        var user = rdp.Username ?? r.Username;
+        return (true, $"{(rdp.Domain is null ? "" : rdp.Domain + "\\")}{user}@{rdp.HostAndPort}");
+    }
+
+    private static bool HasField(PassboltResource r, string key) =>
+        r.CustomFields.Any(f => string.Equals(f.Key.Trim(), key, StringComparison.OrdinalIgnoreCase));
+
+    private static string Host(AccountSession account) =>
+        Uri.TryCreate(account.Config.Account.BaseUrl, UriKind.Absolute, out var uri) ? uri.Authority : account.Config.Account.BaseUrl;
+
+    private async Task RefreshAsync(AccountSession account)
+    {
+        _refreshing.Add(account.Id);
+        try
+        {
+            await account.RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{account.Config.DisplayName}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _refreshing.Remove(account.Id);
+        }
+    }
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Accounts.Changed -= OnChanged;
+}

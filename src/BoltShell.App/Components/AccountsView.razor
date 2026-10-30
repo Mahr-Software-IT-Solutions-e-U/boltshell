@@ -1,0 +1,305 @@
+@implements IDisposable
+@inject AccountManager Accounts
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+<div class="page">
+    <header class="page-header" data-drag>
+        @if (!FirstRun)
+        {
+            <button type="button" class="btn btn-sm" @onclick="OnBack"><Icon Name="back" Size="14" StrokeWidth="2.2" />Zurück zu den Sitzungen</button>
+        }
+        <span class="muted" style="font-size:13px">Einstellungen</span>
+        <span style="color:var(--dim)" aria-hidden="true">›</span>
+        <span style="font-size:13px; font-weight:600">Passbolt-Konten</span>
+            <span style="margin-left:auto"></span>
+        <WindowControls />
+    </header>
+
+    <div class="page-body">
+        <div style="display:flex; flex-direction:column; gap:6px">
+            <h1>@(FirstRun ? "Willkommen" : "Passbolt-Konten")</h1>
+            <p class="lead">
+                Jedes Konto liefert SSH-Hosts, private Schlüssel und Passwörter aus Passbolt. Secrets werden erst beim
+                Verbindungsaufbau entschlüsselt und nie auf die Festplatte geschrieben.
+            </p>
+        </div>
+
+        <div class="cols">
+            <div class="col-main">
+                @if (Accounts.Accounts.Count == 0)
+                {
+                    <div class="card"><p class="muted" style="margin:0">Noch kein Konto verbunden. Lege rechts dein erstes Passbolt-Konto an.</p></div>
+                }
+                @foreach (var account in Accounts.Accounts)
+                {
+                    var unlocked = account.IsUnlocked;
+                    <article class="card" @key="account.Id">
+                        <div class="card-top">
+                            <div class="card-icon" style="background:@(unlocked ? "#13261C" : "#2A2110"); color:@(unlocked ? "#7EE2A8" : "#F2C66B")">
+                                <Icon Name="@(unlocked ? "unlocked" : "locked")" Size="20" />
+                            </div>
+                            <div style="flex:1 1 240px; display:flex; flex-direction:column; gap:3px; min-width:0">
+                                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+                                    <h2>@account.Config.DisplayName</h2>
+                                    <span class="badge @(unlocked ? "badge-ok" : "badge-locked")">@(unlocked ? "Entsperrt" : account.MfaPending ? "TOTP erforderlich" : "Gesperrt")</span>
+                                </div>
+                                <span class="acc-url">@account.Config.Account.BaseUrl@(account.Config.Account.Username is { } u ? " · " + u : "")</span>
+                            </div>
+                            <div style="display:flex; gap:8px; flex-wrap:wrap">
+                                @if (unlocked)
+                                {
+                                    <button type="button" class="btn" @onclick="() => RefreshAsync(account)" disabled="@(_busy == account.Id)">Synchronisieren</button>
+                                    <button type="button" class="btn" @onclick="account.Lock">Sperren</button>
+                                }
+                                <button type="button" class="btn btn-icon" aria-label="Konto @account.Config.DisplayName entfernen" title="Konto entfernen" @onclick="() => RemoveAsync(account)">
+                                    <Icon Name="trash" Size="15" />
+                                </button>
+                            </div>
+                        </div>
+
+                        <dl class="stats">
+                            <div class="stat"><dt>SSH-Hosts</dt><dd>@(account.Resources.Count == 0 && !unlocked ? "–" : $"{account.Hosts.Count()} Hosts")</dd></div>
+                            <div class="stat"><dt>Erkennung</dt><dd class="mono" style="font-size:14px">ssh://</dd></div>
+                            <div class="stat">
+                                <dt><label for="lock-@account.Id">Sperrt automatisch</label></dt>
+                                <dd>
+                                    <select id="lock-@account.Id" value="@account.Config.AutoLockMinutes" @onchange="e => SetAutoLock(account, e)">
+                                        @foreach (var (minutes, label) in AutoLockOptions)
+                                        {
+                                            <option value="@minutes">@label</option>
+                                        }
+                                    </select>
+                                </dd>
+                            </div>
+                        </dl>
+
+                        @if (!unlocked)
+                        {
+                            <form class="inset" @onsubmit="() => UnlockAsync(account)" @onsubmit:preventDefault>
+                                @if (account.MfaPending)
+                                {
+                                    <label class="field" style="flex:1 1 260px">Einmalcode (TOTP)
+                                        <input class="input mono" inputmode="numeric" autocomplete="one-time-code" maxlength="6" @bind="_totp" @bind:event="oninput" />
+                                    </label>
+                                }
+                                else
+                                {
+                                    <label class="field" style="flex:1 1 260px">Passphrase des Passbolt-Schlüssels
+                                        <input class="input" type="password" @bind="_passphrase" @bind:event="oninput" style="background:var(--card)" />
+                                    </label>
+                                }
+                                <button type="submit" class="btn btn-primary" style="height:40px" disabled="@(_busy == account.Id)">
+                                    @(_busy == account.Id ? "Bitte warten…" : account.MfaPending ? "Bestätigen" : "Entsperren")
+                                </button>
+                                @if (_unlockError is { } err && _errorFor == account.Id)
+                                {
+                                    <span class="error-text" role="alert" style="flex-basis:100%">@err</span>
+                                }
+                            </form>
+                        }
+                    </article>
+                }
+            </div>
+
+            <section class="col-side card" aria-labelledby="add-title">
+                <h2 id="add-title">Konto hinzufügen</h2>
+                <label class="field">Anzeigename
+                    <input class="input" placeholder="z. B. Kunde Muster GmbH" @bind="_name" @bind:event="oninput" />
+                </label>
+
+                @if (!_manual)
+                {
+                    <div style="display:flex; flex-direction:column; gap:6px">
+                        <span style="font-size:12px; color:var(--text-2)">Account-Kit aus der Passbolt-Erweiterung</span>
+                        <div class="upload @(_kit is not null ? "done" : "")">
+                            <Icon Name="key" Size="22" Color="@(_kit is not null ? "#7EE2A8" : "#C9CED6")" StrokeWidth="1.8" />
+                            @if (_kit is not null)
+                            {
+                                <span><span style="font-weight:500">@_kitFile</span> geladen · @_kit.BaseUrl</span>
+                            }
+                            else
+                            {
+                                <span><span style="color:var(--text); font-weight:500">account-kit.passbolt</span> ablegen oder auswählen</span>
+                            }
+                            <InputFile OnChange="LoadKitAsync" accept=".passbolt,.txt,.json" aria-label="Account-Kit auswählen" />
+                        </div>
+                        <span class="muted" style="font-size:11px; line-height:1.4">Passbolt-Erweiterung → Profil → Desktop-App einrichten → Account-Kit herunterladen</span>
+                        <button type="button" class="linklike" @onclick="() => _manual = true">Stattdessen manuell eingeben</button>
+                    </div>
+                }
+                else
+                {
+                    <label class="field">Server-URL
+                        <input class="input mono" type="url" placeholder="https://passbolt.example.at" @bind="_serverUrl" @bind:event="oninput" />
+                    </label>
+                    <label class="field">Benutzer-ID (UUID)
+                        <input class="input mono" @bind="_userId" @bind:event="oninput" />
+                    </label>
+                    <label class="field">Privater OpenPGP-Schlüssel
+                        <textarea class="input" rows="5" placeholder="-----BEGIN PGP PRIVATE KEY BLOCK-----" @bind="_privateKey" @bind:event="oninput"></textarea>
+                    </label>
+                    <button type="button" class="linklike" @onclick="() => _manual = false">Account-Kit verwenden</button>
+                }
+
+                <label class="field">Automatisch sperren
+                    <select class="input" @bind="_autoLock">
+                        @foreach (var (minutes, label) in AutoLockOptions)
+                        {
+                            <option value="@minutes">@label</option>
+                        }
+                    </select>
+                </label>
+                @if (_addError is not null)
+                {
+                    <span class="error-text" role="alert">@_addError</span>
+                }
+                <button type="button" class="btn btn-primary btn-lg" @onclick="Add">Konto verbinden</button>
+            </section>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public bool FirstRun { get; set; }
+    [Parameter] public EventCallback OnBack { get; set; }
+
+    private static readonly (int Minutes, string Label)[] AutoLockOptions =
+        [(5, "nach 5 min"), (15, "nach 15 min"), (30, "nach 30 min"), (60, "nach 1 Std."), (240, "nach 4 Std."), (0, "nie")];
+
+    private string? _name;
+    private bool _manual;
+    private PassboltAccount? _kit;
+    private string? _kitFile;
+    private string? _serverUrl;
+    private string? _userId;
+    private string? _privateKey;
+    private int _autoLock = 15;
+    private string? _addError;
+
+    private string? _passphrase;
+    private string? _totp;
+    private string? _busy;
+    private string? _unlockError;
+    private string? _errorFor;
+
+    protected override void OnInitialized() => Accounts.Changed += OnChanged;
+
+    private async Task LoadKitAsync(InputFileChangeEventArgs e)
+    {
+        _addError = null;
+        try
+        {
+            using var reader = new StreamReader(e.File.OpenReadStream(maxAllowedSize: 1024 * 1024));
+            _kit = AccountKit.Parse(await reader.ReadToEndAsync());
+            _kitFile = e.File.Name;
+            if (string.IsNullOrWhiteSpace(_name))
+                _name = new Uri(_kit.BaseUrl).Host;
+        }
+        catch (Exception ex)
+        {
+            _kit = null;
+            _addError = "Account-Kit konnte nicht gelesen werden: " + ex.Message;
+        }
+    }
+
+    private void Add()
+    {
+        _addError = null;
+        PassboltAccount account;
+        if (!_manual)
+        {
+            if (_kit is null)
+            {
+                _addError = "Bitte ein Account-Kit auswählen.";
+                return;
+            }
+            account = _kit;
+        }
+        else
+        {
+            if (!Uri.TryCreate(_serverUrl?.Trim(), UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps && uri.Host != "localhost")
+            {
+                _addError = "Bitte die https://-Adresse des Passbolt-Servers angeben.";
+                return;
+            }
+            if (!Guid.TryParse(_userId?.Trim(), out _))
+            {
+                _addError = "Die Benutzer-ID muss eine UUID sein (siehe Account-Kit oder Profil-URL in Passbolt).";
+                return;
+            }
+            if (_privateKey?.Contains("BEGIN PGP PRIVATE KEY BLOCK") != true)
+            {
+                _addError = "Bitte den privaten Passbolt-Schlüssel (armored) einfügen.";
+                return;
+            }
+            account = new PassboltAccount(uri.ToString().TrimEnd('/'), _userId!.Trim(), _privateKey.Trim());
+        }
+
+        try
+        {
+            Accounts.Add(_name ?? "", account, _autoLock);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _addError = ex.Message == "This Passbolt account is already configured." ? "Dieses Konto ist bereits verbunden." : ex.Message;
+            return;
+        }
+        _name = _serverUrl = _userId = _privateKey = _kitFile = null;
+        _kit = null;
+        Snackbar.Add("Konto hinzugefügt – jetzt mit der Passphrase entsperren.", Severity.Success);
+    }
+
+    private async Task UnlockAsync(AccountSession account)
+    {
+        _busy = account.Id;
+        _errorFor = account.Id;
+        try
+        {
+            _unlockError = await UnlockDialog.UnlockAsync(account, _passphrase, _totp);
+            _passphrase = null;
+            if (account.IsUnlocked)
+                _totp = null;
+        }
+        finally
+        {
+            _busy = null;
+        }
+    }
+
+    private async Task RefreshAsync(AccountSession account)
+    {
+        _busy = account.Id;
+        try
+        {
+            await account.RefreshAsync();
+            Snackbar.Add($"{account.Config.DisplayName}: {account.Hosts.Count()} Hosts geladen.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{account.Config.DisplayName}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _busy = null;
+        }
+    }
+
+    private void SetAutoLock(AccountSession account, ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var minutes))
+            Accounts.Update(account.Id, c => c with { AutoLockMinutes = minutes });
+    }
+
+    private async Task RemoveAsync(AccountSession account)
+    {
+        if (await TextPromptDialog.ConfirmAsync(Dialogs, "Konto entfernen",
+                $"„{account.Config.DisplayName}“ von diesem Rechner entfernen? In Passbolt selbst wird nichts gelöscht. Offene Sitzungen bleiben bestehen.",
+                "Entfernen"))
+            Accounts.Remove(account.Id);
+    }
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Accounts.Changed -= OnChanged;
+}

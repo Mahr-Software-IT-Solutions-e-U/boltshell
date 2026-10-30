@@ -1,0 +1,119 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  VPK_VERSION: 1.2.161
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Install OpenSSH server (integration tests start their own sshd)
+        run: sudo apt-get update && sudo apt-get install -y openssh-server
+      - run: dotnet test --configuration Release
+
+  build:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, rid: win-x64,   channel: win,       exe: BoltShell.exe, icon: app.ico }
+          - { os: ubuntu-latest,  rid: linux-x64, channel: linux,     exe: BoltShell,     icon: icon-256.png }
+          - { os: macos-latest,   rid: osx-arm64, channel: osx-arm64, exe: BoltShell,     icon: app.icns }
+          - { os: macos-latest,   rid: osx-x64,   channel: osx-x64,   exe: BoltShell,     icon: app.icns }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Version
+        id: version
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=0.0.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish
+        shell: bash
+        run: >
+          dotnet publish src/BoltShell.App -c Release -r ${{ matrix.rid }} --self-contained
+          -p:Version=${{ steps.version.outputs.version }} -o publish
+
+      - name: Install Velopack CLI
+        run: dotnet tool install -g vpk --version ${{ env.VPK_VERSION }}
+
+      - name: Install AppImage tooling
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y squashfs-tools
+
+      - name: Download previous release (delta updates)
+        if: startsWith(github.ref, 'refs/tags/v')
+        continue-on-error: true
+        shell: bash
+        run: >
+          vpk download github --repoUrl "${{ github.server_url }}/${{ github.repository }}"
+          --token "${{ secrets.GITHUB_TOKEN }}" --channel ${{ matrix.channel }} --outputDir releases
+
+      - name: Package
+        shell: bash
+        run: >
+          vpk pack --packId BoltShell --packVersion ${{ steps.version.outputs.version }}
+          --runtime ${{ matrix.rid }} --packDir publish --mainExe ${{ matrix.exe }} --packTitle "BoltShell" --packAuthors "BoltShell contributors"
+          --icon src/BoltShell.App/Assets/icon/${{ matrix.icon }} --channel ${{ matrix.channel }} --outputDir releases
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BoltShell-${{ matrix.rid }}
+          path: releases/
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet tool install -g vpk --version ${{ env.VPK_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      # One release for all platforms; uploaded sequentially to avoid races. It is also the auto-update feed.
+      - name: Publish GitHub release
+        shell: bash
+        run: |
+          version="${GITHUB_REF#refs/tags/v}"
+          for channel in win linux osx-arm64 osx-x64; do
+            case "$channel" in
+              win) dir=artifacts/BoltShell-win-x64 ;;
+              linux) dir=artifacts/BoltShell-linux-x64 ;;
+              *) dir="artifacts/BoltShell-$channel" ;;
+            esac
+            vpk upload github --repoUrl "${{ github.server_url }}/${{ github.repository }}" \
+              --token "${{ secrets.GITHUB_TOKEN }}" --channel "$channel" --outputDir "$dir" \
+              --tag "v$version" --releaseName "BoltShell $version" --merge --publish
+          done

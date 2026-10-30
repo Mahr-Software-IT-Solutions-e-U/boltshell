@@ -1,0 +1,41 @@
+<MudDialog>
+    <DialogContent>
+        <div style="display:flex; flex-direction:column; gap:12px; font-size:13px; line-height:1.5">
+            @if (Key.Status == HostKeyStatus.Changed)
+            {
+                <div role="alert" style="padding:12px; border-radius:8px; background:#2A1414; border:1px solid #5A2626; color:#FFB4AB">
+                    Der Host-Key von <b>@Key.HostKeyId</b> hat sich seit der letzten Verbindung geändert.
+                    Jemand könnte die Verbindung abfangen (Man-in-the-Middle), oder der Server wurde neu installiert.
+                    Nur fortfahren, wenn du den neuen Fingerprint geprüft hast.
+                </div>
+                <div>
+                    <div class="muted">Bisher vertraut:</div>
+                    <div class="mono" style="word-break:break-all">SHA256:@Key.PreviousFingerprint</div>
+                </div>
+            }
+            else
+            {
+                <p style="margin:0">Die Echtheit von <b>@Key.HostKeyId</b> ist noch nicht bestätigt.</p>
+            }
+            <div>
+                <div class="muted">Vorgelegter Schlüssel (@Key.Algorithm):</div>
+                <div class="mono" style="word-break:break-all">SHA256:@Key.FingerprintSha256</div>
+            </div>
+            <p class="muted" style="margin:0; font-size:12px">
+                Tipp: Hinterlege den Fingerprint in Passbolt im Feld
+                <span class="mono">@(Key.Algorithm == "TLS-Zertifikat" ? "rdp_cert_sha256" : "ssh_host_key")</span>, dann entfällt diese Abfrage für das ganze Team.
+            </p>
+            <div style="display:flex; justify-content:flex-end; gap:8px; padding-top:4px">
+                <button type="button" class="btn" @onclick="() => MudDialog.Cancel()">Abbrechen</button>
+                <button type="button" class="btn btn-primary" @onclick="() => MudDialog.Close(DialogResult.Ok(true))">
+                    @(Key.Status == HostKeyStatus.Changed ? "Schlüssel ersetzen & verbinden" : "Vertrauen & verbinden")
+                </button>
+            </div>
+        </div>
+    </DialogContent>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter, EditorRequired] public HostKeyInfo Key { get; set; } = null!;
+}

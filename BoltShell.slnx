@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/BoltShell.App/BoltShell.App.csproj" />
+    <Project Path="src/BoltShell.Core/BoltShell.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/BoltShell.Core.Tests/BoltShell.Core.Tests.csproj" />
+  </Folder>
+</Solution>

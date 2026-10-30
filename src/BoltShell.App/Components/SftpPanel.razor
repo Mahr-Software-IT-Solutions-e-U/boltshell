@@ -1,0 +1,466 @@
+@using System.Globalization
+@implements IDisposable
+@inject FileDialogService FileDialogs
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+@inject SettingsStore Settings
+@inject IJSRuntime JS
+
+<aside class="sftp" aria-label="SFTP-Dateiexplorer">
+    <div class="sftp-head">
+        <div class="sftp-title">
+            <span style="font-size:13px; font-weight:600">@(Session.IsScpFallback ? "SCP" : "SFTP")</span>
+            <span class="muted" style="font-size:12px">@Tab.Spec!.Username@("@")@Tab.Spec!.Target.HostAndPort</span>
+            @if (!Session.IsScpFallback)
+            {
+                <label style="margin-left:auto; display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--text-2)"
+                       title="Ordner automatisch wechseln, wenn die Shell ihr Verzeichnis im Fenstertitel meldet">
+                    <input type="checkbox" style="accent-color:#F2B84B" checked="@Tab.FollowTerminal" @onchange="OnFollowChanged" />Terminal folgen
+                </label>
+            }
+        </div>
+
+        @if (_connecting)
+        {
+            <span class="muted" style="font-size:12px">Verbinde …</span>
+        }
+        else if (_error is not null)
+        {
+            <div role="alert" style="display:flex; flex-direction:column; gap:8px">
+                <span class="error-text">@_error</span>
+                <div><button type="button" class="btn btn-sm" @onclick="ConnectAsync">Erneut versuchen</button></div>
+            </div>
+        }
+        else
+        {
+            @if (!Session.IsScpFallback)
+            {
+                <nav aria-label="Pfad" class="crumbs">
+                    @foreach (var (label, path, last) in Crumbs())
+                    {
+                        if (last)
+                        {
+                            <span class="current">@label</span>
+                        }
+                        else
+                        {
+                            <button type="button" @onclick="() => NavigateAsync(path)">@label</button>
+                            <span class="sep" aria-hidden="true">›</span>
+                        }
+                    }
+                </nav>
+            }
+            <div class="toolbar">
+                <button type="button" class="btn btn-sm btn-primary" @onclick="UploadFilesAsync"><Icon Name="upload" Size="14" StrokeWidth="2.2" />Hochladen</button>
+                @if (Session.IsScpFallback)
+                {
+                    <button type="button" class="btn btn-sm" @onclick="DownloadByPathAsync"><Icon Name="download" Size="14" />Pfad herunterladen</button>
+                }
+                else
+                {
+                    <button type="button" class="btn btn-sm" disabled="@(_selected is null)" @onclick="() => DownloadAsync(_selected!)"><Icon Name="download" Size="14" />Herunterladen</button>
+                    <button type="button" class="btn btn-sm" @onclick="CreateFolderAsync">Neuer Ordner</button>
+                    <button type="button" class="btn btn-sm btn-icon" aria-label="Ordner hochladen" title="Ordner hochladen" @onclick="UploadFolderAsync"><Icon Name="folder-up" Size="14" /></button>
+                    <button type="button" class="btn btn-sm btn-icon" aria-label="Umbenennen" title="Umbenennen" disabled="@(_selected is null)" @onclick="() => RenameAsync(_selected!)"><Icon Name="edit" Size="14" /></button>
+                    <button type="button" class="btn btn-sm btn-icon" aria-label="Löschen" title="Löschen" disabled="@(_selected is null)" @onclick="() => DeleteAsync(_selected!)"><Icon Name="trash" Size="14" /></button>
+                    <button type="button" class="btn btn-sm btn-icon" aria-label="Aktualisieren" title="Aktualisieren" @onclick="() => NavigateAsync(_path)"><Icon Name="refresh" Size="14" /></button>
+                }
+            </div>
+        }
+    </div>
+
+    @if (Session.IsScpFallback)
+    {
+        <p class="muted" style="margin:12px 14px; font-size:12px; line-height:1.5">
+            Der Server bietet kein SFTP. Über SCP können Dateien übertragen, aber keine Ordner angezeigt werden. Uploads landen in
+            <span class="mono">@_path</span>.
+        </p>
+    }
+    else if (!_connecting && _error is null)
+    {
+        <div class="files">
+            <table>
+                <thead>
+                    <tr><th scope="col">Name</th><th scope="col" class="num col-size">Größe</th><th scope="col" class="num col-date">Geändert</th></tr>
+                </thead>
+                <tbody>
+                    @if (_path != "/")
+                    {
+                        <tr @ondblclick="GoUpAsync" title="Übergeordneter Ordner">
+                            <td class="name"><span class="file-name"><Icon Name="folder" Color="#79C0FF" StrokeWidth="1.8" />..</span></td>
+                            <td></td><td></td>
+                        </tr>
+                    }
+                    @foreach (var entry in _entries)
+                    {
+                        <tr class="@(entry == _selected ? "selected" : "")" @key="entry.FullPath" title="@entry.Permissions"
+                            @onclick="() => _selected = entry" @ondblclick="() => OpenAsync(entry)">
+                            <td class="name">
+                                <span class="file-name">
+                                    @if (entry.IsDirectory)
+                                    {
+                                        <Icon Name="folder" Color="#79C0FF" StrokeWidth="1.8" />
+                                    }
+                                    else
+                                    {
+                                        <Icon Name="file" Color="#9AA1AC" StrokeWidth="1.8" />
+                                    }
+                                    @entry.Name
+                                    @if (entry.IsSymlink)
+                                    {
+                                        <span title="Symbolischer Link" style="display:inline-flex; color:#9AA1AC"><Icon Name="link" Size="12" /></span>
+                                    }
+                                </span>
+                            </td>
+                            <td class="num meta mono">@(entry.IsDirectory ? "–" : FormatSize(entry.Size))</td>
+                            <td class="num meta" title="@entry.LastWriteTime.ToLocalTime().ToString("dd.MM.yyyy HH:mm", CultureInfo.InvariantCulture)">@ShortDate(entry.LastWriteTime)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @if (!_connecting && _error is null)
+    {
+        <div class="dropzone" @ref="_dropzone">
+            Dateien hierher ziehen zum Hochladen nach <span class="mono" style="color:var(--text-2)">@(LastSegment(_path))/</span>
+            <InputFile multiple OnChange="OnDropAsync" aria-label="Dateien zum Hochladen auswählen oder hierher ziehen" />
+        </div>
+    }
+
+    @if (Session.Transfers.Count > 0)
+    {
+        var transfers = Session.Transfers;
+        <div class="transfers">
+            <div style="display:flex; align-items:center; justify-content:space-between">
+                <span style="font-size:12px; font-weight:600; color:var(--text-2)">Übertragungen</span>
+                <span style="display:flex; align-items:center; gap:8px">
+                    <span class="muted" style="font-size:12px">@transfers.Count(t => t.State is TransferState.Running or TransferState.Queued) aktiv · @transfers.Count(t => t.State == TransferState.Completed) fertig</span>
+                    <button type="button" class="linklike" @onclick="Session.ClearFinishedTransfers">Leeren</button>
+                </span>
+            </div>
+            @foreach (var t in transfers)
+            {
+                <div style="display:flex; flex-direction:column; gap:6px">
+                    <div class="transfer-row">
+                        <span class="name" title="@t.Destination">@(t.Direction == TransferDirection.Upload ? "↑" : "↓") @t.Name</span>
+                        <span style="display:flex; align-items:center; gap:6px; flex:none">
+                            @switch (t.State)
+                            {
+                                case TransferState.Completed:
+                                    <span style="color:#7EE2A8">Fertig</span>
+                                    break;
+                                case TransferState.Failed:
+                                    <span class="error-text" title="@t.Error">Fehler</span>
+                                    break;
+                                case TransferState.Cancelled:
+                                    <span class="muted">Abgebrochen</span>
+                                    break;
+                                default:
+                                    <span class="muted">@t.Percent.ToString("0", CultureInfo.InvariantCulture) %</span>
+                                    <button type="button" class="tab-close" aria-label="@t.Name abbrechen" @onclick="t.Cancel"><Icon Name="close" Size="11" StrokeWidth="2.4" /></button>
+                                    break;
+                            }
+                        </span>
+                    </div>
+                    @if (t.State is TransferState.Running or TransferState.Queued)
+                    {
+                        <div class="progress"><div style="width:@t.Percent.ToString("0.#", CultureInfo.InvariantCulture)%"></div></div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</aside>
+
+@code {
+    [Parameter, EditorRequired] public SessionTab Tab { get; set; } = null!;
+
+    private SftpSession Session => Tab.Sftp!;
+    private IReadOnlyList<RemoteEntry> _entries = [];
+    private RemoteEntry? _selected;
+    private string _path = ".";
+    private bool _connecting;
+    private string? _error;
+    private ElementReference _dropzone;
+    private DateTime _lastRender;
+    private CancellationTokenSource? _syncCts;
+    private bool _wasVisible;
+    private string? _lastTitleDirectory;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Session.TransfersChanged += OnTransfersChanged;
+        Tab.Terminal!.InputSubmitted += OnInputSubmitted;
+        _wasVisible = Tab.SftpVisible;
+        await ConnectAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Catch up when the panel is shown again or the shell reported a new directory in its window title.
+        var becameVisible = Tab.SftpVisible && !_wasVisible;
+        var titleChanged = Tab.TerminalDirectory != _lastTitleDirectory;
+        _wasVisible = Tab.SftpVisible;
+        _lastTitleDirectory = Tab.TerminalDirectory;
+        if (becameVisible || titleChanged)
+            await SyncWithTerminalAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_connecting && _error is null)
+            await JS.InvokeVoidAsync("pbsshDropzone.attach", _dropzone);
+    }
+
+    private async Task ConnectAsync()
+    {
+        _connecting = true;
+        _error = null;
+        StateHasChanged();
+        while (true)
+        {
+            try
+            {
+                await Task.Run(() => Session.ConnectAsync());
+                _connecting = false;
+                var start = Tab.FollowTerminal ? await TerminalDirectoryAsync() ?? Session.HomeDirectory : Session.HomeDirectory;
+                if (!await NavigateAsync(start, quiet: true))
+                    await NavigateAsync(Session.HomeDirectory);
+                return;
+            }
+            catch (KeyPassphraseRequiredException ex)
+            {
+                var passphrase = await TextPromptDialog.ShowAsync(Dialogs, "Passphrase des SSH-Schlüssels", "Passphrase",
+                    ex.WrongPassphrase ? "Die Passphrase war falsch. Bitte erneut versuchen." : $"Der private Schlüssel für {Session.Spec.DisplayName} ist verschlüsselt.",
+                    secret: true);
+                if (passphrase is null)
+                {
+                    _error = "Abgebrochen.";
+                    break;
+                }
+                Session.UpdateCredentials(Session.Spec.Credentials with { KeyPassphrase = passphrase });
+            }
+            catch (Exception ex)
+            {
+                _error = ex.Message;
+                break;
+            }
+        }
+        _connecting = false;
+    }
+
+    private async Task<bool> NavigateAsync(string path, bool quiet = false)
+    {
+        if (Session.IsScpFallback)
+        {
+            _path = path;
+            return true;
+        }
+        try
+        {
+            var entries = await Session.ListAsync(path);
+            var resolved = path == "." ? Session.HomeDirectory : path;
+            _entries = entries;
+            _path = resolved;
+            _selected = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            if (!quiet)
+                Snackbar.Add($"{path}: {ex.Message}", Severity.Error);
+            return false;
+        }
+    }
+
+    private string ResolveShellPath(string dir)
+    {
+        if (dir == "~")
+            return Session.HomeDirectory;
+        if (dir.StartsWith("~/", StringComparison.Ordinal))
+            return SftpSession.CombineRemote(Session.HomeDirectory, dir[2..]);
+        return dir;
+    }
+
+    private Task GoUpAsync()
+    {
+        var trimmed = _path.TrimEnd('/');
+        var index = trimmed.LastIndexOf('/');
+        return NavigateAsync(index <= 0 ? "/" : trimmed[..index]);
+    }
+
+    private IEnumerable<(string Label, string Path, bool Last)> Crumbs()
+    {
+        var parts = _path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        yield return ("/", "/", parts.Length == 0);
+        for (var i = 0; i < parts.Length; i++)
+            yield return (parts[i], "/" + string.Join('/', parts[..(i + 1)]), i == parts.Length - 1);
+    }
+
+    private async Task OnFollowChanged(ChangeEventArgs e)
+    {
+        Tab.FollowTerminal = e.Value is true;
+        await SyncWithTerminalAsync();
+    }
+
+    // "Terminal folgen": after Enter in the terminal, give the command a moment, then ask the server for the shell's cwd.
+    private void OnInputSubmitted()
+    {
+        if (!Tab.FollowTerminal)
+            return;
+        _syncCts?.Cancel();
+        var cts = _syncCts = new CancellationTokenSource();
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                await Task.Delay(350, cts.Token);
+                await SyncWithTerminalAsync();
+                StateHasChanged();
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        });
+    }
+
+    private async Task SyncWithTerminalAsync()
+    {
+        if (!Tab.FollowTerminal || !Tab.SftpVisible || _connecting || _error is not null || Session.IsScpFallback)
+            return;
+        if (await TerminalDirectoryAsync() is { } dir && dir != _path)
+            await NavigateAsync(dir, quiet: true);
+    }
+
+    /// <summary>The terminal's cwd from the server (/proc); falls back to a directory reported in the window title.</summary>
+    private async Task<string?> TerminalDirectoryAsync() =>
+        await Tab.Terminal!.GetWorkingDirectoryAsync()
+        ?? (Tab.TerminalDirectory is { } title ? ResolveShellPath(title) : null);
+
+    private Task OpenAsync(RemoteEntry entry) => entry.IsDirectory ? NavigateAsync(entry.FullPath) : DownloadAsync(entry);
+
+    private async Task UploadFilesAsync()
+    {
+        foreach (var file in await FileDialogs.PickFilesAsync("Dateien hochladen"))
+            Track(Session.UploadAsync(file, _path));
+    }
+
+    private async Task UploadFolderAsync()
+    {
+        if (await FileDialogs.PickFolderAsync("Ordner hochladen") is { } folder)
+            Track(Session.UploadAsync(folder, _path));
+    }
+
+    private void OnDropAsync(InputFileChangeEventArgs e)
+    {
+        foreach (var file in e.GetMultipleFiles(maximumFileCount: 100))
+        {
+            var stream = file.OpenReadStream(maxAllowedSize: 20L * 1024 * 1024 * 1024);
+            Track(Session.UploadStreamAsync(stream, file.Name, file.Size, _path).ContinueWith(_ => stream.Dispose(), TaskScheduler.Default));
+        }
+    }
+
+    private async Task DownloadAsync(RemoteEntry entry)
+    {
+        if (await PickDownloadFolderAsync() is { } folder)
+            Track(Session.DownloadAsync(entry, folder), refresh: false);
+    }
+
+    private async Task DownloadByPathAsync()
+    {
+        var remote = await TextPromptDialog.ShowAsync(Dialogs, "Über SCP herunterladen", "Pfad der Datei auf dem Server", initialValue: _path);
+        if (remote is not null && await PickDownloadFolderAsync() is { } folder)
+            Track(Session.DownloadPathAsync(remote, folder), refresh: false);
+    }
+
+    private async Task<string?> PickDownloadFolderAsync()
+    {
+        var folder = await FileDialogs.PickFolderAsync("Herunterladen nach", Settings.Current.DownloadDirectory);
+        if (folder is not null)
+            Settings.Update(s => s with { DownloadDirectory = folder });
+        return folder;
+    }
+
+    private async Task CreateFolderAsync()
+    {
+        if (await TextPromptDialog.ShowAsync(Dialogs, "Neuer Ordner", "Name") is { } name)
+            await RunAsync(() => Session.CreateDirectoryAsync(SftpSession.CombineRemote(_path, name)));
+    }
+
+    private async Task RenameAsync(RemoteEntry entry)
+    {
+        if (await TextPromptDialog.ShowAsync(Dialogs, "Umbenennen", "Neuer Name", initialValue: entry.Name) is { } name && name != entry.Name)
+            await RunAsync(() => Session.RenameAsync(entry.FullPath, SftpSession.CombineRemote(_path, name)));
+    }
+
+    private async Task DeleteAsync(RemoteEntry entry)
+    {
+        var message = entry.IsDirectory ? $"Ordner „{entry.Name}“ mit allen Inhalten löschen?" : $"„{entry.Name}“ löschen?";
+        if (await TextPromptDialog.ConfirmAsync(Dialogs, "Löschen", message, "Löschen"))
+            await RunAsync(() => Session.DeleteAsync(entry));
+    }
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        try
+        {
+            await action();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        await NavigateAsync(_path);
+    }
+
+    private void Track(Task transfer, bool refresh = true) =>
+        _ = transfer.ContinueWith(_ => InvokeAsync(async () =>
+        {
+            if (refresh && !Session.Transfers.Any(t => t.State == TransferState.Running))
+                await NavigateAsync(_path, quiet: true);
+            StateHasChanged();
+        }), TaskScheduler.Default);
+
+    // Progress fires very often; re-render at most ~10x per second.
+    private void OnTransfersChanged()
+    {
+        var now = DateTime.UtcNow;
+        if ((now - _lastRender).TotalMilliseconds < 100)
+            return;
+        _lastRender = now;
+        InvokeAsync(StateHasChanged);
+    }
+
+    // Like the design: "29.10. 17:02" for this year, "14.03.2024" for older entries.
+    private static string ShortDate(DateTime value)
+    {
+        var local = value.ToLocalTime();
+        return local.Year == DateTime.Now.Year
+            ? local.ToString("dd.MM. HH:mm", CultureInfo.InvariantCulture)
+            : local.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture);
+    }
+
+    private static string LastSegment(string path) =>
+        path.TrimEnd('/').Split('/').LastOrDefault(s => s.Length > 0) ?? "/";
+
+    // German decimal comma, independent of the OS locale.
+    private static string FormatSize(long bytes) => bytes switch
+    {
+        < 1024 => $"{bytes} B",
+        < 1024 * 1024 => Decimal(bytes / 1024.0, "0.0") + " KB",
+        < 1024L * 1024 * 1024 => Decimal(bytes / 1024.0 / 1024, "0.0") + " MB",
+        _ => Decimal(bytes / 1024.0 / 1024 / 1024, "0.00") + " GB",
+    };
+
+    private static string Decimal(double value, string format) =>
+        value.ToString(format, CultureInfo.InvariantCulture).Replace('.', ',');
+
+    public void Dispose()
+    {
+        Session.TransfersChanged -= OnTransfersChanged;
+        Tab.Terminal!.InputSubmitted -= OnInputSubmitted;
+        _syncCts?.Cancel();
+    }
+}

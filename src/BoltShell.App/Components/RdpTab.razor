@@ -1,0 +1,143 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject RdpProxy Proxy
+@inject WorkspaceState State
+
+<div class="rdp-host">
+    <div class="rdp-canvas" @ref="_container"></div>
+
+    @if (Tab.RdpState is SessionState.Failed or SessionState.Closed)
+    {
+        <div class="terminal-overlay">
+            <div class="overlay-card" role="alert">
+                <h3>@(Tab.RdpState == SessionState.Closed ? "Sitzung beendet" : "Verbindung fehlgeschlagen")</h3>
+                @if (_message is not null)
+                {
+                    <p>@_message</p>
+                }
+                <div><button type="button" class="btn btn-primary" @onclick="ConnectAsync"><Icon Name="refresh" Size="14" />Neu verbinden</button></div>
+            </div>
+        </div>
+    }
+    else if (Tab.RdpState is SessionState.Connecting or SessionState.Created)
+    {
+        <div class="terminal-overlay" style="background:transparent; flex-direction:column; gap:12px" aria-label="Verbinde">
+            <div class="spinner"></div>
+            <span class="muted" style="font-size:13px">Verbinde mit @Tab.HostAndPort …</span>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public SessionTab Tab { get; set; } = null!;
+    [Parameter] public bool Active { get; set; }
+
+    private ElementReference _container;
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<RdpTab>? _self;
+    private string? _message;
+    private bool _wasActive;
+
+    private string SessionId => Tab.Rdp!.Id;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _self = DotNetObjectReference.Create(this);
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/rdp.js");
+            await ConnectAsync();
+        }
+        else if (Active && !_wasActive && _module is not null)
+        {
+            await _module.InvokeVoidAsync("focus", SessionId);
+        }
+        _wasActive = Active;
+    }
+
+    private async Task ConnectAsync()
+    {
+        if (_module is null)
+            return;
+        _message = null;
+        SetState(SessionState.Connecting);
+        var spec = Tab.Rdp!.Spec;
+        // Ask for the visible area so the remote desktop fits the tab without scaling.
+        var size = await JS.InvokeAsync<double[]>("pbsshRdp.size", _container);
+        await _module.InvokeVoidAsync("start", SessionId, _container, _self, new
+        {
+            username = spec.Username,
+            password = spec.Password,
+            domain = spec.Domain,
+            destination = spec.Target.Destination,
+            proxyAddress = Tab.Rdp.ProxyAddress,
+            token = Tab.Rdp.Token,
+            // Multiple of 4 / even: servers may round odd sizes, and the web client cannot handle a size it did not request.
+            width = Math.Max(800, (int)size[0]) / 4 * 4,
+            height = Math.Max(600, (int)size[1]) / 2 * 2,
+        });
+    }
+
+    [JSInvokable]
+    public Task OnConnected(int width, int height)
+    {
+        Tab.RdpDesktopSize = (width, height);
+        SetState(SessionState.Connected);
+        return InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public Task OnEnded(string reason)
+    {
+        _message = string.IsNullOrWhiteSpace(reason) ? null : reason;
+        SetState(SessionState.Closed);
+        return InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public Task OnFailed(int kind, string message, string detail, int httpStatus, int wsaError, int tlsAlert)
+    {
+        _message = (kind, httpStatus) switch
+        {
+            (1 or 2, _) => "Anmeldung fehlgeschlagen: Benutzer, Domäne oder Passwort sind falsch.",
+            (3, _) => "Zugriff verweigert.",
+            (6, _) => "Der Server hat das angeforderte Sicherheitsprotokoll abgelehnt (NLA/TLS-Einstellung des Servers prüfen).",
+            (_, 495) => "Das Zertifikat des Servers wurde nicht bestätigt oder passt nicht zu rdp_cert_sha256 in Passbolt.",
+            (_, 403) => "Der lokale RDP-Vermittler hat die Verbindung abgelehnt.",
+            _ when wsaError != 0 => $"Der RDP-Server ist nicht erreichbar (Socket-Fehler {wsaError}).",
+            _ when tlsAlert != 0 => $"TLS-Handshake mit dem Server fehlgeschlagen (Alert {tlsAlert}).",
+            (4 or 5, _) => "Der RDP-Vermittler konnte die Verbindung nicht aufbauen.",
+            _ => string.IsNullOrWhiteSpace(detail) ? message : $"{message}: {detail}",
+        };
+        _message += $" Details im Log: {LogDirectory}";
+        SetState(SessionState.Failed);
+        return InvokeAsync(StateHasChanged);
+    }
+
+    private static string LogDirectory => Path.Combine(SettingsStore.DefaultDirectory(), "logs");
+
+    public ValueTask CtrlAltDelAsync() => _module?.InvokeVoidAsync("ctrlAltDel", SessionId) ?? ValueTask.CompletedTask;
+
+    private void SetState(SessionState state)
+    {
+        Tab.RdpState = state;
+        State.Notify();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_module is not null)
+            {
+                await _module.InvokeVoidAsync("stop", SessionId);
+                await _module.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+        Proxy.Unregister(SessionId);
+        _self?.Dispose();
+    }
+}

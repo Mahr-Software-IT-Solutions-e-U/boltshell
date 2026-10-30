@@ -1,0 +1,179 @@
+@using System.Threading.Channels
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject IDialogService Dialogs
+@inject SettingsStore Settings
+
+<div class="terminal-host" @ref="_host">
+    <Xterm @ref="_terminal" Style="height:100%; width:100%" Options="_options" Addons="_addons" OnFirstRender="OnFirstRenderAsync"
+           OnData="OnInputAsync" OnResize="OnResize" OnTitleChange="OnTitleChange" />
+
+    @if (Session.State is SessionState.Failed or SessionState.Closed)
+    {
+        <div class="terminal-overlay">
+            <div class="overlay-card" role="alert">
+                <h3>@(Session.State == SessionState.Closed ? "Sitzung beendet" : "Verbindung fehlgeschlagen")</h3>
+                @if (Session.Error is not null)
+                {
+                    <p>@Session.Error</p>
+                }
+                <div><button type="button" class="btn btn-primary" @onclick="ConnectAsync"><Icon Name="refresh" Size="14" />Neu verbinden</button></div>
+            </div>
+        </div>
+    }
+    else if (Session.State == SessionState.Connecting)
+    {
+        <div class="terminal-overlay" style="background:transparent" aria-label="Verbinde">
+            <div class="spinner"></div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public SshTerminalSession Session { get; set; } = null!;
+
+    /// <summary>True while this tab is visible; used to re-fit and focus after switching tabs.</summary>
+    [Parameter] public bool Active { get; set; }
+
+    /// <summary>Info line printed before connecting (e.g. where the credentials come from).</summary>
+    [Parameter] public string? Banner { get; set; }
+
+    /// <summary>Window title set by the remote shell (often "user@host: /path").</summary>
+    [Parameter] public EventCallback<string> OnTitleChanged { get; set; }
+
+    [Parameter] public EventCallback OnSizeChanged { get; set; }
+
+    private readonly HashSet<string> _addons = ["addon-fit", "addon-web-links"];
+    private readonly Channel<byte[]> _output = Channel.CreateUnbounded<byte[]>(new UnboundedChannelOptions { SingleReader = true });
+    private readonly CancellationTokenSource _cts = new();
+    private ElementReference _host;
+    private Xterm _terminal = null!;
+    private TerminalOptions _options = null!;
+    private bool _rendered;
+    private bool _wasActive;
+
+    protected override void OnInitialized()
+    {
+        var settings = Settings.Current;
+        _options = new TerminalOptions
+        {
+            CursorBlink = true,
+            FontSize = settings.TerminalFontSize,
+            FontFamily = settings.TerminalFontFamily,
+            Scrollback = 10000,
+            Theme = new Theme { Background = "#0B0D10", Foreground = "#D1D5DB", Cursor = "#F2B84B" },
+        };
+        // SSH.NET raises these on its own threads; never block there.
+        Session.DataReceived += OnSshData;
+        Session.StateChanged += OnStateChanged;
+    }
+
+    private async Task OnFirstRenderAsync()
+    {
+        _rendered = true;
+        await JS.InvokeVoidAsync("pbssh.observeFit", _host, _terminal.Id);
+        _ = PumpOutputAsync();
+        await ConnectAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_rendered && Active && !_wasActive)
+        {
+            await JS.InvokeVoidAsync("pbssh.fit", _terminal.Id);
+            await _terminal.Focus();
+        }
+        _wasActive = Active;
+    }
+
+    private async Task ConnectAsync()
+    {
+        while (true)
+        {
+            try
+            {
+                var columns = await _terminal.GetColumns();
+                var rows = await _terminal.GetRows();
+                if (Banner is not null)
+                    await _terminal.WriteLine($"\u001b[38;2;242;198;107m▍ {Banner}\u001b[0m");
+                await _terminal.WriteLine($"\u001b[90mVerbinde mit {Session.Spec.Username}@{Session.Spec.Target.HostAndPort} …\u001b[0m");
+                await Session.ConnectAsync(columns, rows, _cts.Token);
+                await JS.InvokeVoidAsync("pbssh.fit", _terminal.Id);
+                Session.Resize(await _terminal.GetColumns(), await _terminal.GetRows());
+                await _terminal.Focus();
+                return;
+            }
+            catch (KeyPassphraseRequiredException ex)
+            {
+                var passphrase = await TextPromptDialog.ShowAsync(Dialogs, "Passphrase des SSH-Schlüssels", "Passphrase",
+                    ex.WrongPassphrase ? "Die Passphrase war falsch. Bitte erneut versuchen." : $"Der private Schlüssel für {Session.Spec.DisplayName} ist verschlüsselt und in Passbolt ist keine Passphrase hinterlegt.",
+                    secret: true);
+                if (passphrase is null)
+                    return;
+                Session.UpdateCredentials(Session.Spec.Credentials with { KeyPassphrase = passphrase });
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                await _terminal.WriteLine($"\u001b[31m{ex.Message}\u001b[0m");
+                return;
+            }
+        }
+    }
+
+    private void OnSshData(byte[] data) => _output.Writer.TryWrite(data);
+
+    // Coalesces output chunks so a burst (e.g. `cat` of a large file) becomes a few JS calls instead of thousands.
+    private async Task PumpOutputAsync()
+    {
+        var reader = _output.Reader;
+        try
+        {
+            while (await reader.WaitToReadAsync(_cts.Token))
+            {
+                using var buffer = new MemoryStream();
+                while (buffer.Length < 256 * 1024 && reader.TryRead(out var chunk))
+                    buffer.Write(chunk);
+                var bytes = buffer.ToArray();
+                await InvokeAsync(() => _terminal.Write(bytes).AsTask());
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+    }
+
+    private Task OnInputAsync(string data) => Session.WriteAsync(data);
+
+    private Task OnResize(ResizeEventArgs size)
+    {
+        Session.Resize(size.Columns, size.Rows);
+        return OnSizeChanged.InvokeAsync();
+    }
+
+    private Task OnTitleChange(string title) => OnTitleChanged.InvokeAsync(title);
+
+    private void OnStateChanged(SessionState state) => InvokeAsync(StateHasChanged);
+
+    public async ValueTask DisposeAsync()
+    {
+        Session.DataReceived -= OnSshData;
+        Session.StateChanged -= OnStateChanged;
+        _cts.Cancel();
+        _output.Writer.TryComplete();
+        try
+        {
+            await JS.InvokeVoidAsync("pbssh.unobserve", _host);
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+        _cts.Dispose();
+    }
+}

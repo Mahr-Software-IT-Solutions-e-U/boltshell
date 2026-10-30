@@ -1,0 +1,336 @@
+@using Microsoft.Extensions.Logging
+@using BoltShell.Core.Provisioning
+@implements IDisposable
+@inject AccountManager Accounts
+@inject SshConnector Connector
+@inject SessionManager Sessions
+@inject WorkspaceState State
+@inject ILoggerFactory LoggerFactory
+@inject IDialogService Dialogs
+
+<div class="page">
+    <header class="page-header" data-drag>
+        <button type="button" class="btn btn-sm" @onclick="OnBack" disabled="@_running"><Icon Name="back" Size="14" StrokeWidth="2.2" />Zurück</button>
+        <span class="muted" style="font-size:13px">Hosts</span>
+        <span style="color:var(--dim)" aria-hidden="true">›</span>
+        <span style="font-size:13px; font-weight:600">Host provisionieren</span>
+            <span style="margin-left:auto"></span>
+        <WindowControls />
+    </header>
+
+    <form class="page-body" style="padding-top:32px" @onsubmit="RunAsync" @onsubmit:preventDefault>
+        <div class="cols">
+            <div class="col-main">
+                <section class="card" aria-labelledby="p-conn">
+                    <h2 id="p-conn">Bestehender Zugang</h2>
+                    <p class="muted" style="margin:0; font-size:13px; line-height:1.5">
+                        Mit diesen Daten meldet sich die App einmalig per Passwort an, um den Schlüssel einzurichten.
+                    </p>
+                    <div style="display:grid; grid-template-columns:repeat(6, minmax(0,1fr)); gap:12px">
+                        <label class="field" style="grid-column:span 6">Name in Passbolt
+                            <input class="input" @bind="_name" @bind:event="oninput" placeholder="z. B. odoo-prod-01" disabled="@Locked" />
+                        </label>
+                        <label class="field" style="grid-column:span 4">Host oder IP
+                            <input class="input mono" @bind="_host" @bind:event="oninput" @onblur="SuggestName" placeholder="10.0.10.21" disabled="@Locked" />
+                        </label>
+                        <label class="field" style="grid-column:span 2">Port
+                            <input class="input mono" type="number" min="1" max="65535" @bind="_port" disabled="@Locked" />
+                        </label>
+                        <label class="field" style="grid-column:span 3">Benutzer
+                            <input class="input mono" @bind="_user" @bind:event="oninput" autocomplete="off" disabled="@Locked" />
+                        </label>
+                        <label class="field" style="grid-column:span 3">Passwort
+                            <input class="input" type="password" @bind="_password" @bind:event="oninput" autocomplete="off" disabled="@Locked" />
+                        </label>
+                    </div>
+                </section>
+
+                <section class="card" aria-labelledby="p-pb">
+                    <h2 id="p-pb">Ablage in Passbolt</h2>
+                    <div style="display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:12px">
+                        <label class="field">Passbolt-Konto
+                            <select class="input" value="@_accountId" @onchange="OnAccountChanged" disabled="@Locked">
+                                @foreach (var account in Accounts.Accounts)
+                                {
+                                    <option value="@account.Id">@account.Config.DisplayName@(account.IsUnlocked ? "" : " (gesperrt)")</option>
+                                }
+                            </select>
+                        </label>
+                        <label class="field">Ordner
+                            <select class="input" @bind="_folderId" disabled="@(Locked || SelectedAccount?.IsUnlocked != true)">
+                                <option value="">Kein Ordner (nur für mich)</option>
+                                @foreach (var (id, path) in Folders())
+                                {
+                                    <option value="@id">@path</option>
+                                }
+                            </select>
+                        </label>
+                    </div>
+                    @if (SelectedAccount is { IsUnlocked: false } locked)
+                    {
+                        <div><button type="button" class="btn btn-sm" @onclick="() => UnlockDialog.ShowAsync(Dialogs, locked)"><Icon Name="locked" Size="14" />Konto entsperren</button></div>
+                    }
+                    <p class="muted" style="margin:0; font-size:12px; line-height:1.5">
+                        Die Ressource erhält die Freigaben des Ordners. Gespeichert werden <span class="mono">@($"ssh://{KeyUser}@{_host ?? "host"}")</span>,
+                        <span class="mono">ssh_private_key</span>, <span class="mono">ssh_public_key</span> und <span class="mono">ssh_host_key</span>.
+                    </p>
+                </section>
+
+                <section class="card" aria-labelledby="p-opt">
+                    <h2 id="p-opt">Schlüssel &amp; Absicherung</h2>
+                    <fieldset style="margin:0; padding:0; border:0; display:flex; flex-direction:column; gap:8px">
+                        <legend style="font-size:12px; color:var(--text-2); margin-bottom:8px">Schlüssel einrichten für</legend>
+                        <label style="@OptionStyle(_keyForRoot)"><input type="radio" name="keyuser" checked="@_keyForRoot" @onchange="() => _keyForRoot = true" disabled="@Locked" style="accent-color:#F2B84B; margin-top:2px" />
+                            <span><span style="font-weight:500">root</span><br /><span class="muted" style="font-size:12px">Schlüssel in /root/.ssh/authorized_keys, Root-Login nur per Schlüssel (PermitRootLogin prohibit-password). Braucht root oder sudo.</span></span></label>
+                        <label style="@OptionStyle(!_keyForRoot)"><input type="radio" name="keyuser" checked="@(!_keyForRoot)" @onchange="() => _keyForRoot = false" disabled="@Locked" style="accent-color:#F2B84B; margin-top:2px" />
+                            <span><span style="font-weight:500">Anmeldebenutzer @(string.IsNullOrWhiteSpace(_user) ? "" : $"({_user})")</span><br /><span class="muted" style="font-size:12px">Schlüssel für den oben angegebenen Benutzer; sein Passwort bleibt in Passbolt (z. B. für sudo).</span></span></label>
+                    </fieldset>
+                    <label style="display:flex; align-items:flex-start; gap:10px; font-size:13px">
+                        <input type="checkbox" @bind="_disablePassword" disabled="@Locked" style="accent-color:#F2B84B; margin-top:3px" />
+                        <span><span style="font-weight:500">Passwort-Login danach deaktivieren</span><br />
+                            <span class="muted" style="font-size:12px; line-height:1.5">
+                                Schreibt <span class="mono">/etc/ssh/sshd_config.d/@HostProvisioner.ConfigFileName</span>, prüft mit <span class="mono">sshd -t</span>
+                                und lädt sshd neu – erst nachdem der Schlüssel funktioniert und in Passbolt liegt. Bricht der Schlüssel-Login danach,
+                                wird die Änderung automatisch zurückgenommen. Ein Konsolenzugang als Rückfallebene ist trotzdem empfehlenswert.
+                            </span></span>
+                    </label>
+                </section>
+            </div>
+
+            <aside class="col-side" style="display:flex; flex-direction:column; gap:16px">
+                <section class="card" aria-labelledby="p-flow" aria-live="polite">
+                    <h2 id="p-flow">Ablauf</h2>
+                    <ol style="margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:12px; font-size:13px; line-height:1.45">
+                        @foreach (var (step, index) in Steps().Select((s, i) => (s, i)))
+                        {
+                            <li style="display:flex; gap:10px; opacity:@(step.Status == StepStatus.Skipped ? ".45" : "1")">
+                                <span style="flex:none; width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; @StepBadge(step.Status)">
+                                    @if (step.Status == StepStatus.Running)
+                                    {
+                                        <span class="spinner" style="width:14px; height:14px; border-width:2px" aria-label="läuft"></span>
+                                    }
+                                    else
+                                    {
+                                        <span aria-label="@StepLabel(step.Status)">@StepSymbol(step.Status, index)</span>
+                                    }
+                                </span>
+                                <span style="display:flex; flex-direction:column; min-width:0">
+                                    <span>@step.Title</span>
+                                    @if (step.Detail is not null && step.Status != StepStatus.Pending)
+                                    {
+                                        <span class="@(step.Status == StepStatus.Failed ? "error-text" : "muted")" style="font-size:12px; word-break:break-word">@step.Detail</span>
+                                    }
+                                </span>
+                            </li>
+                        }
+                    </ol>
+                </section>
+
+                @if (_error is not null)
+                {
+                    <div class="card" role="alert" style="border-color:#5A2626; background:#1C1213; gap:8px">
+                        <h2 style="font-size:14px">Provisionierung abgebrochen</h2>
+                        <p style="margin:0; font-size:13px; color:#FFB4AB; line-height:1.5">@_error</p>
+                        @if (_rolledBack)
+                        {
+                            <p class="muted" style="margin:0; font-size:12px">Bereits vorgenommene Änderungen am Server wurden zurückgenommen.</p>
+                        }
+                    </div>
+                }
+                @if (_result is not null)
+                {
+                    <div class="card" role="status" style="border-color:#1F4A33; background:#0F1C15; gap:8px">
+                        <h2 style="font-size:14px; color:#7EE2A8">Host provisioniert</h2>
+                        <p style="margin:0; font-size:13px; line-height:1.5">
+                            <span class="mono">@($"{_result.Value.Spec.Username}@{_result.Value.Spec.Target.HostAndPort}")</span> ist in Passbolt gespeichert.
+                        </p>
+                        @if (_result.Value.Warning is not null)
+                        {
+                            <p style="margin:0; font-size:12px; color:#F2C66B; line-height:1.5">@_result.Value.Warning</p>
+                        }
+                    </div>
+                }
+
+                @if (_result is null)
+                {
+                    <button type="submit" class="btn btn-primary btn-lg" disabled="@(_running || !CanRun)">
+                        @(_running ? "Provisioniere …" : _error is null ? "Provisionieren" : "Erneut versuchen")
+                    </button>
+                    @if (!_running && !CanRun)
+                    {
+                        <span class="muted" style="font-size:12px">@MissingHint</span>
+                    }
+                }
+                else
+                {
+                    <div style="display:flex; gap:10px">
+                        <button type="button" class="btn btn-lg" style="flex:1" @onclick="Reset">Weiteren Host</button>
+                        <button type="button" class="btn btn-primary btn-lg" style="flex:2" @onclick="Connect">Verbinden</button>
+                    </div>
+                }
+            </aside>
+        </div>
+    </form>
+</div>
+
+@code {
+    [Parameter] public EventCallback OnBack { get; set; }
+
+    private string? _name;
+    private string? _host;
+    private int _port = 22;
+    private string? _user;
+    private string? _password;
+    private string? _accountId;
+    private string _folderId = "";
+    private bool _keyForRoot = true;
+    private bool _disablePassword;
+
+    private HostProvisioner? _provisioner;
+    private bool _running;
+    private string? _error;
+    private bool _rolledBack;
+    private (SshConnectionSpec Spec, string? Warning, string ResourceId)? _result;
+
+    private AccountSession? SelectedAccount => _accountId is null ? null : Accounts.Find(_accountId);
+    private string KeyUser => _keyForRoot ? "root" : string.IsNullOrWhiteSpace(_user) ? "user" : _user.Trim();
+    private bool Locked => _running || _result is not null;
+
+    private bool CanRun =>
+        !string.IsNullOrWhiteSpace(_name) && !string.IsNullOrWhiteSpace(_host) && !string.IsNullOrWhiteSpace(_user)
+        && !string.IsNullOrEmpty(_password) && _port is > 0 and <= 65535 && SelectedAccount?.IsUnlocked == true;
+
+    private string MissingHint =>
+        SelectedAccount?.IsUnlocked != true ? "Das gewählte Passbolt-Konto ist gesperrt." : "Bitte Name, Host, Benutzer und Passwort angeben.";
+
+    protected override void OnInitialized()
+    {
+        Accounts.Changed += OnChanged;
+        _accountId = (Accounts.Accounts.FirstOrDefault(a => a.IsUnlocked) ?? Accounts.Accounts.FirstOrDefault())?.Id;
+    }
+
+    private IEnumerable<(string Id, string Path)> Folders() =>
+        SelectedAccount is { } account
+            ? account.Folders.Keys.Select(id => (id, account.FolderPath(id))).OrderBy(f => f.Item2, StringComparer.OrdinalIgnoreCase)
+            : [];
+
+    private IEnumerable<ProvisionStep> Steps() =>
+        (_provisioner ?? new HostProvisioner(Connector, LoggerFactory.CreateLogger<HostProvisioner>(), BuildRequest())).Steps;
+
+    private ProvisionRequest BuildRequest() => new(
+        _name?.Trim() ?? "",
+        new SshTarget(_host?.Trim() is { Length: > 0 } h ? h : "host", _port),
+        _user?.Trim() is { Length: > 0 } u ? u : "user",
+        new SshCredentials(_password, null, null),
+        _keyForRoot,
+        _disablePassword);
+
+    private void OnAccountChanged(ChangeEventArgs e)
+    {
+        _accountId = e.Value?.ToString();
+        _folderId = "";
+    }
+
+    private void SuggestName()
+    {
+        if (string.IsNullOrWhiteSpace(_name) && !string.IsNullOrWhiteSpace(_host))
+            _name = _host.Trim();
+    }
+
+    private async Task RunAsync()
+    {
+        if (_running || !CanRun || SelectedAccount is not { } account)
+            return;
+        _running = true;
+        _error = null;
+        _rolledBack = false;
+        var folderId = string.IsNullOrEmpty(_folderId) ? null : _folderId;
+        string? resourceId = null;
+        _provisioner = new HostProvisioner(Connector, LoggerFactory.CreateLogger<HostProvisioner>(), BuildRequest());
+        _provisioner.Changed += OnChanged;
+        try
+        {
+            var (spec, warning) = await Task.Run(() => _provisioner.RunAsync(async (host, ct) =>
+            {
+                var (id, shareWarning) = await account.CreateResourceAsync(host.ToResource(folderId), ct);
+                resourceId = id;
+                return shareWarning;
+            }));
+            _result = (spec, warning, resourceId!);
+            _password = null; // not needed anymore; the stored copy lives in Passbolt
+        }
+        catch (Exception ex)
+        {
+            _error = ex switch
+            {
+                HostKeyRejectedException => "Der Host-Key wurde nicht bestätigt.",
+                Renci.SshNet.Common.SshAuthenticationException =>
+                    "Anmeldung fehlgeschlagen: Benutzer oder Passwort falsch, oder der Server erlaubt keinen Passwort-Login.",
+                System.Net.Sockets.SocketException se => $"Server nicht erreichbar ({se.SocketErrorCode}).",
+                Renci.SshNet.Common.SshOperationTimeoutException => "Zeitüberschreitung beim Verbinden.",
+                _ => ex.Message,
+            };
+            _rolledBack = _provisioner.Steps.Any(s => s.Kind == ProvisionStepKind.InstallKey && s.Status == StepStatus.Done);
+        }
+        finally
+        {
+            _running = false;
+        }
+    }
+
+    private void Connect()
+    {
+        if (_result is not { } result || SelectedAccount is not { } account)
+            return;
+        State.Open(Sessions, result.Spec, account.Id, result.ResourceId);
+        OnBack.InvokeAsync();
+    }
+
+    private void Reset()
+    {
+        if (_provisioner is not null)
+            _provisioner.Changed -= OnChanged;
+        _provisioner = null;
+        _result = null;
+        _error = null;
+        _name = _host = _password = null;
+        _port = 22;
+    }
+
+    private static string OptionStyle(bool selected) =>
+        "display:flex; align-items:flex-start; gap:10px; padding:10px 12px; border-radius:8px; font-size:13px; " +
+        (selected ? "border:1px solid #5A4618; background:#1A160C" : "border:1px solid #262A31");
+
+    private static string StepSymbol(StepStatus status, int index) => status switch
+    {
+        StepStatus.Done => "✓",
+        StepStatus.Failed => "!",
+        StepStatus.Skipped => "–",
+        _ => (index + 1).ToString(System.Globalization.CultureInfo.InvariantCulture),
+    };
+
+    private static string StepLabel(StepStatus status) => status switch
+    {
+        StepStatus.Done => "erledigt",
+        StepStatus.Failed => "fehlgeschlagen",
+        StepStatus.Skipped => "übersprungen",
+        _ => "offen",
+    };
+
+    private static string StepBadge(StepStatus status) => status switch
+    {
+        StepStatus.Done => "background:#13261C; color:#7EE2A8",
+        StepStatus.Failed => "background:#3A1E1E; color:#FF8A80",
+        StepStatus.Running => "background:transparent",
+        _ => "background:#2A2110; color:#F2C66B",
+    };
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        Accounts.Changed -= OnChanged;
+        if (_provisioner is not null)
+            _provisioner.Changed -= OnChanged;
+    }
+}

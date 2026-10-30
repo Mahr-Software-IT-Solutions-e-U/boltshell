@@ -1,0 +1,133 @@
+@implements IDisposable
+@inject AccountManager Accounts
+@inject SshConnector Connector
+@inject BoltShell.Core.Rdp.RdpProxy RdpProxy
+@inject IDialogService Dialogs
+@inject WindowService Window
+@inject IJSRuntime JS
+
+<MudThemeProvider IsDarkMode="true" Theme="_theme" />
+<MudPopoverProvider />
+<MudDialogProvider CloseOnEscapeKey="true" BackdropClick="false" />
+<MudSnackbarProvider />
+
+@if (Window.Frameless && !Window.IsMaximized)
+{
+    @* Invisible grips for resizing the frameless window. *@
+    @foreach (var edge in new[] { "n", "s", "e", "w", "ne", "nw", "se", "sw" })
+    {
+        <div class="resize-grip resize-@edge" data-resize="@edge" aria-hidden="true"></div>
+    }
+}
+
+@if (Accounts.Accounts.Count == 0)
+{
+    <AccountsView FirstRun="true" />
+}
+else
+{
+    @* The workspace stays mounted while the accounts page is shown, so terminals keep running. *@
+    <div style="@(_page == Page.Workspace ? "" : "display:none")">
+        <Workspace OnManageAccounts="() => _page = Page.Accounts" OnProvisionHost="() => _page = Page.Provision"
+                   OnCreateRdpHost="() => _page = Page.CreateRdp" />
+    </div>
+    @if (_page == Page.Accounts)
+    {
+        <AccountsView OnBack="() => _page = Page.Workspace" />
+    }
+    else if (_page == Page.Provision)
+    {
+        <ProvisionView OnBack="() => _page = Page.Workspace" />
+    }
+    else if (_page == Page.CreateRdp)
+    {
+        <RdpHostView OnBack="() => _page = Page.Workspace" />
+    }
+}
+
+@code {
+    private enum Page { Workspace, Accounts, Provision, CreateRdp }
+
+    private Page _page;
+
+    private readonly MudTheme _theme = new()
+    {
+        PaletteDark = new PaletteDark
+        {
+            Primary = "#F2B84B",
+            PrimaryContrastText = "#1A1300",
+            Secondary = "#9AA1AC",
+            Background = "#0E1013",
+            Surface = "#15181D",
+            AppbarBackground = "#121419",
+            DrawerBackground = "#121419",
+            TextPrimary = "#E6E8EB",
+            TextSecondary = "#9AA1AC",
+            LinesDefault = "#262A31",
+            LinesInputs = "#2E333B",
+            Error = "#FF8A80",
+            Success = "#7EE2A8",
+            Warning = "#F2C66B",
+        },
+        Typography = new Typography
+        {
+            Default = new DefaultTypography { FontFamily = ["Inter", "system-ui", "sans-serif"] },
+        },
+    };
+
+    private DotNetObjectReference<WindowService>? _windowRef;
+
+    protected override void OnInitialized()
+    {
+        Accounts.Changed += OnChanged;
+        Window.Changed += OnChanged;
+        Connector.HostKeyPrompt = PromptHostKeyAsync;
+        RdpProxy.CertificatePrompt = PromptHostKeyAsync;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && Window.Frameless)
+        {
+            _windowRef = DotNetObjectReference.Create(Window);
+            await JS.InvokeVoidAsync("pbsshWindow.init", _windowRef);
+        }
+    }
+
+    // Called on an SSH.NET thread; marshal to the UI and wait for the user's answer.
+    private Task<bool> PromptHostKeyAsync(HostKeyInfo key)
+    {
+        var answer = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                var parameters = new DialogParameters<HostKeyDialog> { { d => d.Key, key } };
+                var certificate = key.Algorithm == "TLS-Zertifikat";
+                var dialog = await Dialogs.ShowAsync<HostKeyDialog>(
+                    key.Status == HostKeyStatus.Changed
+                        ? certificate ? "WARNUNG: RDP-Zertifikat hat sich geändert" : "WARNUNG: Host-Key hat sich geändert"
+                        : certificate ? "Unbekanntes RDP-Zertifikat" : "Unbekannter Host",
+                    parameters, new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+                var result = await dialog.Result;
+                answer.TrySetResult(result is { Canceled: false, Data: true });
+            }
+            catch (Exception ex)
+            {
+                answer.TrySetException(ex);
+            }
+        });
+        return answer.Task;
+    }
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        Accounts.Changed -= OnChanged;
+        Window.Changed -= OnChanged;
+        Connector.HostKeyPrompt = null;
+        RdpProxy.CertificatePrompt = null;
+        _windowRef?.Dispose();
+    }
+}
