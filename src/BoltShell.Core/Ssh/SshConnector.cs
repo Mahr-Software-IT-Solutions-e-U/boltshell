@@ -61,6 +61,18 @@ public sealed class SshConnector(KnownHostsStore knownHosts, ILogger<SshConnecto
 
     public TimeSpan KeepAliveInterval { get; set; } = TimeSpan.FromSeconds(30);
 
+    /// <summary>How long a server may take to answer at all (TCP connect and key exchange up to the host key).</summary>
+    public TimeSpan ConnectTimeout { get; set; } = TimeSpan.FromSeconds(15);
+
+    /// <summary>
+    /// Limit for every later wait, also while the user answers a prompt during login (host key, one-time code).
+    /// SSH.NET waits with this timeout while our prompt is open; 2 minutes is OpenSSH's default LoginGraceTime.
+    /// </summary>
+    public TimeSpan LoginTimeout { get; set; } = TimeSpan.FromMinutes(2);
+
+    // Per client: cancels a connect that gets no host key within ConnectTimeout; disarmed once the server is talking.
+    private readonly ConditionalWeakTable<BaseClient, CancellationTokenSource> _connectWatchdogs = new();
+
     // Last TOTP sent per user@host: many servers refuse a code twice (e.g. a second connection for SFTP right away).
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _lastTotp = new();
 
@@ -76,13 +88,25 @@ public sealed class SshConnector(KnownHostsStore knownHosts, ILogger<SshConnecto
     /// <summary>Connects a client created by this connector, reporting host key rejections as <see cref="HostKeyRejectedException"/>.</summary>
     public async Task ConnectAsync(BaseClient client, CancellationToken ct = default)
     {
+        using var watchdog = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        watchdog.CancelAfter(ConnectTimeout);
+        _connectWatchdogs.AddOrUpdate(client, watchdog);
         try
         {
-            await client.ConnectAsync(ct);
+            await client.ConnectAsync(watchdog.Token);
         }
         catch (Exception) when (_rejections.TryGetValue(client, out var rejection))
         {
             throw rejection;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            throw new Renci.SshNet.Common.SshOperationTimeoutException(
+                Tr("{0}:{1} did not respond within {2} seconds.", client.ConnectionInfo.Host, client.ConnectionInfo.Port, (int)ConnectTimeout.TotalSeconds));
+        }
+        finally
+        {
+            _connectWatchdogs.Remove(client);
         }
     }
 
@@ -123,8 +147,12 @@ public sealed class SshConnector(KnownHostsStore knownHosts, ILogger<SshConnecto
     private T Configure<T>(T client, SshConnectionSpec spec) where T : BaseClient
     {
         client.KeepAliveInterval = KeepAliveInterval;
+        client.ConnectionInfo.Timeout = LoginTimeout;
         client.HostKeyReceived += (_, e) =>
         {
+            // The server answers: from here on only LoginTimeout applies (prompts may take a while).
+            if (_connectWatchdogs.TryGetValue(client, out var watchdog))
+                watchdog.CancelAfter(Timeout.InfiniteTimeSpan);
             _rejections.Remove(client);
             e.CanTrust = VerifyHostKey(client, spec, e);
         };
