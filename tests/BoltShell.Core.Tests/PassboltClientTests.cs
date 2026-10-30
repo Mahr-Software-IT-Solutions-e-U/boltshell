@@ -295,3 +295,44 @@ public class PassboltClientTests
         };
     }
 }
+
+/// <summary>Audit finding SEC-03: Passbolt only over HTTPS (loopback excepted), on every path.</summary>
+public class ServerUrlTests
+{
+    [Theory]
+    [InlineData("http://passbolt.example")]
+    [InlineData("http://10.0.0.5")]
+    [InlineData("http://localhost.evil.example")]
+    [InlineData("ftp://passbolt.example")]
+    [InlineData("passbolt.example")]
+    [InlineData("")]
+    public void InsecureOrInvalid_IsRejected(string url)
+    {
+        Assert.Throws<ArgumentException>(() => Passbolt.PassboltAccount.ValidateServerUrl(url));
+        Assert.ThrowsAny<Exception>(() => new Passbolt.PassboltClient(new Passbolt.PassboltAccount(url, "u", "k")));
+    }
+
+    [Theory]
+    [InlineData("https://passbolt.example")]
+    [InlineData("http://localhost:8080")]
+    [InlineData("http://127.0.0.1:5077/pb")]
+    [InlineData("http://[::1]:8080")]
+    public void HttpsOrLoopback_IsAccepted(string url)
+    {
+        Passbolt.PassboltAccount.ValidateServerUrl(url);
+        using var client = new Passbolt.PassboltClient(new Passbolt.PassboltAccount(url, "u", "k"));
+    }
+
+    [Fact]
+    public void AccountKit_WithRemoteHttp_IsRejected()
+    {
+        var json = new System.Text.Json.Nodes.JsonObject
+        {
+            ["domain"] = "http://passbolt.example",
+            ["user_id"] = "11111111-1111-1111-1111-111111111111",
+            ["user_private_armored_key"] = TestKeys.User.Private,
+        }.ToJsonString();
+        var ex = Assert.Throws<FormatException>(() => Passbolt.AccountKit.Parse(Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(json))));
+        Assert.Contains("HTTPS", ex.Message);
+    }
+}

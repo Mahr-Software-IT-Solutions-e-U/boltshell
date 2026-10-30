@@ -25,8 +25,18 @@ public static class AccountKit
         if (root.TryGetProperty("server_public_armored_key", out var serverKey) && serverKey.GetString() is { } armored)
             serverFingerprint = Crypto.PgpPublicKeys.Parse(armored).Fingerprint;
 
+        var domain = Required("domain");
+        try
+        {
+            PassboltAccount.ValidateServerUrl(domain);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new FormatException(ex.Message, ex);
+        }
+
         return new PassboltAccount(
-            ServerUrl: Required("domain"),
+            ServerUrl: domain,
             UserId: Required("user_id"),
             ArmoredPrivateKey: Required("user_private_armored_key"),
             Username: root.TryGetProperty("username", out var u) ? u.GetString() : null,

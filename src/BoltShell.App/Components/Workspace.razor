@@ -83,18 +83,18 @@
                         <div class="term-wrap">
                             @if (tab.IsRdp)
                             {
-                                <RdpTab Tab="tab" Active="@(tab == State.Active)" />
+                                <RdpTab Tab="tab" Active="@(tab == State.Active)" BeforeConnect="() => EnsureCredentialsAsync(tab)" />
                             }
                             else
                             {
-                                <TerminalTab Session="tab.Terminal!" Active="@(tab == State.Active)" Banner="@Banner(tab)"
+                                <TerminalTab Session="tab.Terminal!" Active="@(tab == State.Active)" Banner="@Banner(tab)" BeforeConnect="() => EnsureCredentialsAsync(tab)"
                                              OnTitleChanged="title => OnTerminalTitle(tab, title)" OnSizeChanged="State.Notify" />
                             }
                         </div>
                         @if (tab.Sftp is not null)
                         {
                             <div style="display:@(tab.SftpVisible ? "flex" : "none"); flex: 1 1 380px; min-width: 320px; max-width: 520px">
-                                <SftpPanel Tab="tab" />
+                                <SftpPanel Tab="tab" BeforeConnect="() => EnsureCredentialsAsync(tab)" />
                             </div>
                         }
                     </div>
@@ -157,7 +157,7 @@
     protected override void OnInitialized()
     {
         State.Changed += OnChanged;
-        Accounts.Changed += OnChanged;
+        Accounts.Changed += OnAccountsChanged;
         Updates.Changed += OnChanged;
         _ = Updates.CheckAsync();
     }
@@ -210,12 +210,57 @@
     private void AddTab(SshConnectionSpec spec, string? accountId, string? resourceId) =>
         State.Open(Sessions, spec, accountId, resourceId);
 
-    private void DuplicateActive()
+    private async Task DuplicateActive()
     {
-        if (State.Active is { IsRdp: true } rdp)
-            State.OpenRdp(RdpProxy, rdp.Rdp!.Spec, rdp.AccountId, rdp.ResourceId);
-        else if (State.Active is { Spec: { } spec } tab)
+        if (State.Active is not { } tab || !await EnsureCredentialsAsync(tab))
+            return;
+        if (tab.IsRdp)
+            State.OpenRdp(RdpProxy, tab.Rdp!.Spec, tab.AccountId, tab.ResourceId);
+        else if (tab.Spec is { } spec)
             AddTab(spec, tab.AccountId, tab.ResourceId);
+    }
+
+    /// <summary>
+    /// Gate for every new connection from an existing tab (duplicate, reconnect, SFTP): if the tab's Passbolt account was
+    /// locked meanwhile, its cached credentials are gone – ask for the passphrase and decrypt them freshly from Passbolt.
+    /// </summary>
+    private async Task<bool> EnsureCredentialsAsync(SessionTab tab)
+    {
+        if (!tab.CredentialsCleared || tab.AccountId is null)
+            return true;
+        if (Accounts.Find(tab.AccountId) is not { } account)
+        {
+            Snackbar.Add("Das Passbolt-Konto dieser Sitzung wurde entfernt.", Severity.Warning);
+            return false;
+        }
+        if (!await UnlockDialog.ShowAsync(Dialogs, account))
+            return false;
+        if (account.Resources.FirstOrDefault(r => r.Id == tab.ResourceId) is not { } resource)
+        {
+            Snackbar.Add("Die Ressource ist in Passbolt nicht mehr vorhanden.", Severity.Warning);
+            return false;
+        }
+        try
+        {
+            if (tab.IsRdp)
+                State.RestoreCredentials(tab, null, await account.GetRdpSpecAsync(resource), RdpProxy);
+            else
+                State.RestoreCredentials(tab, await account.GetConnectionSpecAsync(resource), null, RdpProxy);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{resource.Name}: {ex.Message}", Severity.Error);
+            return false;
+        }
+    }
+
+    // Locking an account (manually or by auto-lock) drops the credentials cached in its tabs.
+    private void OnAccountsChanged()
+    {
+        foreach (var account in Accounts.Accounts.Where(a => !a.IsUnlocked))
+            State.ClearCredentials(account.Id, RdpProxy);
+        OnChanged();
     }
 
     private async Task CtrlAltDelAsync(SessionTab tab)
@@ -236,9 +281,11 @@
             await Sessions.CloseAsync(tab.Sftp.Id);
     }
 
-    private void ToggleSftp(SessionTab tab)
+    private async Task ToggleSftp(SessionTab tab)
     {
         if (tab.Spec is null)
+            return;
+        if (tab.Sftp is null && !await EnsureCredentialsAsync(tab))
             return;
         tab.Sftp ??= Sessions.CreateSftp(tab.Spec);
         tab.SftpVisible = !tab.SftpVisible;
@@ -316,7 +363,7 @@
     public void Dispose()
     {
         State.Changed -= OnChanged;
-        Accounts.Changed -= OnChanged;
+        Accounts.Changed -= OnAccountsChanged;
         Updates.Changed -= OnChanged;
     }
 }

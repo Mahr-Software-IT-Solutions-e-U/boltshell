@@ -16,7 +16,7 @@ command -v vpk >/dev/null || dotnet tool install -g vpk --version 1.2.161
 echo "Publishing BoltShell $VERSION to $DIST"
 rm -rf "$DIST/win-x64"
 dotnet publish "$PROJECT" -c Release -r win-x64 --self-contained -o "$DIST/win-x64" -p:Version="$VERSION"
-cp "$ROOT/README.md" "$ROOT/LICENSE" "$DIST/win-x64/"
+cp "$ROOT/README.md" "$DIST/win-x64/"  # LICENSE, notices and licenses/ come from the build
 
 # "[win]" lets vpk build the Windows installer on Linux/macOS as well.
 vpk "[win]" pack --packId BoltShell --packVersion "$VERSION" --packDir "$DIST/win-x64" \

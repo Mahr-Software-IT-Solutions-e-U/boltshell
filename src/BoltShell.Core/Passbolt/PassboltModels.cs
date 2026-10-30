@@ -9,6 +9,20 @@ public sealed record PassboltAccount(
     string? ServerFingerprint = null)
 {
     public string BaseUrl => ServerUrl.TrimEnd('/');
+
+    /// <summary>
+    /// Passbolt must be reached over HTTPS: bearer and refresh tokens and TOTP codes travel outside the PGP layer.
+    /// Plain HTTP is only allowed for loopback addresses (local development).
+    /// </summary>
+    /// <exception cref="ArgumentException">The URL is not absolute, or uses HTTP for a non-loopback host.</exception>
+    public static Uri ValidateServerUrl(string? url)
+    {
+        if (!Uri.TryCreate(url?.Trim(), UriKind.Absolute, out var uri) || uri.Scheme is not ("https" or "http") || string.IsNullOrEmpty(uri.Host))
+            throw new ArgumentException($"„{url}“ ist keine gültige Passbolt-Adresse (https://…).");
+        if (uri.Scheme == Uri.UriSchemeHttp && !uri.IsLoopback)
+            throw new ArgumentException($"Passbolt muss per HTTPS erreichbar sein; „{uri.Host}“ wurde mit http:// angegeben.");
+        return uri;
+    }
 }
 
 /// <summary>A decrypted, display-ready Passbolt resource (no secret data).</summary>

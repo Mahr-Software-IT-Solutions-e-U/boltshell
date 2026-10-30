@@ -148,6 +148,9 @@
                         <span style="display:flex; align-items:center; gap:6px; flex:none">
                             @switch (t.State)
                             {
+                                case TransferState.Completed when t.Warnings.Count > 0:
+                                    <span style="color:#F2C66B" title="@string.Join("\n", t.Warnings)">Fertig · @t.Warnings.Count übersprungen</span>
+                                    break;
                                 case TransferState.Completed:
                                     <span style="color:#7EE2A8">Fertig</span>
                                     break;
@@ -176,6 +179,9 @@
 
 @code {
     [Parameter, EditorRequired] public SessionTab Tab { get; set; } = null!;
+
+    /// <summary>Called before every connect; returns false if credentials are not available (e.g. account locked).</summary>
+    [Parameter] public Func<Task<bool>>? BeforeConnect { get; set; }
 
     private SftpSession Session => Tab.Sftp!;
     private IReadOnlyList<RemoteEntry> _entries = [];
@@ -216,6 +222,11 @@
 
     private async Task ConnectAsync()
     {
+        if (BeforeConnect is not null && !await BeforeConnect())
+        {
+            _error = "Das Passbolt-Konto ist gesperrt – zum Verbinden bitte entsperren.";
+            return;
+        }
         _connecting = true;
         _error = null;
         StateHasChanged();

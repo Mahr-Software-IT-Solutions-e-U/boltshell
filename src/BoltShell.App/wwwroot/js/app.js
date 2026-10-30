@@ -153,3 +153,11 @@ window.pbsshRdp = {
         return [Math.round(r?.width || 1280), Math.round(r?.height || 800)];
     }
 };
+
+// Viewport position of a menu button: [right edge, bottom edge] in CSS pixels.
+window.pbsshMenu = {
+    anchor(element) {
+        const r = element.getBoundingClientRect();
+        return [r.right, r.bottom];
+    }
+};

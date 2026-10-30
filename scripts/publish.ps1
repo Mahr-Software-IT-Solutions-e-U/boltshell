@@ -17,7 +17,7 @@ Write-Host "Publishing BoltShell $Version to $Dist"
 Remove-Item -Recurse -Force (Join-Path $Dist "win-x64") -ErrorAction SilentlyContinue
 dotnet publish $Project -c Release -r win-x64 --self-contained -o (Join-Path $Dist "win-x64") -p:Version=$Version
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-Copy-Item (Join-Path $Root "README.md"), (Join-Path $Root "LICENSE") (Join-Path $Dist "win-x64")
+Copy-Item (Join-Path $Root "README.md") (Join-Path $Dist "win-x64")  # LICENSE, notices and licenses\ come from the build
 
 vpk pack --packId BoltShell --packVersion $Version --packDir (Join-Path $Dist "win-x64") `
   --mainExe BoltShell.exe --packTitle "BoltShell" --packAuthors "BoltShell contributors" `

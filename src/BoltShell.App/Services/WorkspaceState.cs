@@ -18,11 +18,17 @@ public sealed partial class SessionTab
     public string? ResourceId { get; init; }
 
     // SSH
-    public SshConnectionSpec? Spec { get; init; }
+    public SshConnectionSpec? Spec { get; internal set; }
     public SshTerminalSession? Terminal { get; init; }
 
     // RDP
-    public RdpProxySession? Rdp { get; init; }
+    public RdpProxySession? Rdp { get; internal set; }
+
+    /// <summary>
+    /// True after the Passbolt account was locked: the tab's credentials were dropped. Open connections keep running,
+    /// but every new connection (duplicate, reconnect, SFTP) first needs an unlock and freshly decrypted credentials.
+    /// </summary>
+    public bool CredentialsCleared { get; internal set; }
     public SessionState RdpState { get; set; } = SessionState.Created;
     public (int Width, int Height)? RdpDesktopSize { get; set; }
 
@@ -110,6 +116,38 @@ public sealed class WorkspaceState
     {
         Active = tab;
         Notify();
+    }
+
+    /// <summary>Drops cached credentials of all tabs that belong to <paramref name="accountId"/> (account was locked).</summary>
+    public void ClearCredentials(string accountId, RdpProxy proxy)
+    {
+        var empty = new SshCredentials(null, null, null);
+        foreach (var tab in _tabs.Where(t => t.AccountId == accountId && !t.CredentialsCleared))
+        {
+            if (tab.Spec is { } spec)
+            {
+                tab.Spec = spec with { Credentials = empty };
+                tab.Terminal?.UpdateCredentials(empty);
+                tab.Sftp?.UpdateCredentials(empty);
+            }
+            if (tab.Rdp is { } rdp)
+                tab.Rdp = proxy.Update(rdp, rdp.Spec with { Password = null });
+            tab.CredentialsCleared = true;
+        }
+    }
+
+    /// <summary>Puts freshly decrypted credentials back into a tab after the account was unlocked again.</summary>
+    public void RestoreCredentials(SessionTab tab, SshConnectionSpec? spec, RdpConnectionSpec? rdpSpec, RdpProxy proxy)
+    {
+        if (spec is not null && tab.Spec is not null)
+        {
+            tab.Spec = tab.Spec with { Credentials = spec.Credentials, HostKeys = spec.HostKeys };
+            tab.Terminal?.UpdateCredentials(spec.Credentials);
+            tab.Sftp?.UpdateCredentials(spec.Credentials);
+        }
+        if (rdpSpec is not null && tab.Rdp is { } rdp)
+            tab.Rdp = proxy.Update(rdp, rdpSpec);
+        tab.CredentialsCleared = false;
     }
 
     public void Remove(SessionTab tab)

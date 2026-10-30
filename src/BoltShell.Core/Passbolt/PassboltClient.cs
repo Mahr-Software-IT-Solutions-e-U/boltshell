@@ -33,6 +33,7 @@ public sealed class PassboltClient : IDisposable
 
     public PassboltClient(PassboltAccount account, HttpMessageHandler? handler = null, ILogger<PassboltClient>? logger = null)
     {
+        PassboltAccount.ValidateServerUrl(account.BaseUrl); // also covers accounts stored before this check existed
         _account = account;
         _logger = logger ?? NullLogger<PassboltClient>.Instance;
         _http = new HttpClient(handler ?? new HttpClientHandler { CookieContainer = new CookieContainer() })

@@ -18,6 +18,7 @@ public sealed class SshIntegrationTests : IClassFixture<LocalSshServer>, IDispos
     public SshIntegrationTests(LocalSshServer server)
     {
         _server = server;
+        _server.WaitUntilListening(); // a previous test may have reloaded sshd
         Directory.CreateDirectory(_workDir);
         _knownHosts = new KnownHostsStore(Path.Combine(_workDir, "known_hosts.json"));
         _connector = new SshConnector(_knownHosts, NullLogger<SshConnector>.Instance)
@@ -30,10 +31,10 @@ public sealed class SshIntegrationTests : IClassFixture<LocalSshServer>, IDispos
         };
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Terminal_RunsCommand_AndPinsHostKey()
     {
-        if (!_server.Available) return;
+        Skip.IfNot(_server.Available, "OpenSSH server (sshd) not installed");
         await using var manager = new SessionManager(_connector);
 
         var output = await RunEchoAsync(manager.CreateTerminal(Spec(_server.ClientKey)), "first");
@@ -47,10 +48,10 @@ public sealed class SshIntegrationTests : IClassFixture<LocalSshServer>, IDispos
         Assert.Single(_prompts);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Terminal_RejectsChangedHostKey()
     {
-        if (!_server.Available) return;
+        Skip.IfNot(_server.Available, "OpenSSH server (sshd) not installed");
         var target = new SshTarget("127.0.0.1", _server.Port);
         _knownHosts.Trust(new HostKeyInfo(target.HostKeyId, "ssh-ed25519", "AAAAwrongfingerprint", HostKeyStatus.Unknown, null));
         await using var manager = new SessionManager(_connector);
@@ -61,10 +62,10 @@ public sealed class SshIntegrationTests : IClassFixture<LocalSshServer>, IDispos
         Assert.Equal(SessionState.Failed, session.State);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task PassboltHostIdentity_Matching_ConnectsWithoutPrompt()
     {
-        if (!_server.Available) return;
+        Skip.IfNot(_server.Available, "OpenSSH server (sshd) not installed");
         await using var manager = new SessionManager(_connector);
         var spec = Spec(_server.ClientKey) with { HostKeys = SshConnectionMapper.ParseHostKeys("[127.0.0.1]:22 " + _server.HostPublicKey) };
 
@@ -73,10 +74,10 @@ public sealed class SshIntegrationTests : IClassFixture<LocalSshServer>, IDispos
         Assert.Empty(_knownHosts.List()); // Passbolt is the source of truth; nothing stored locally
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task PassboltHostIdentity_Mismatch_IsRejectedWithoutPrompt()
     {
-        if (!_server.Available) return;
+        Skip.IfNot(_server.Available, "OpenSSH server (sshd) not installed");
         await using var manager = new SessionManager(_connector);
         // Even a locally trusted key must not override the identity stored in Passbolt.
         _knownHosts.Trust(await FetchHostKeyAsync());
@@ -92,10 +93,10 @@ public sealed class SshIntegrationTests : IClassFixture<LocalSshServer>, IDispos
         Assert.Empty(_prompts);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task EncryptedKey_RequiresPassphrase()
     {
-        if (!_server.Available) return;
+        Skip.IfNot(_server.Available, "OpenSSH server (sshd) not installed");
         await using var manager = new SessionManager(_connector);
         var session = manager.CreateTerminal(Spec(_server.EncryptedClientKey));
 
@@ -109,10 +110,10 @@ public sealed class SshIntegrationTests : IClassFixture<LocalSshServer>, IDispos
         Assert.Contains("pb-enc-42", await RunEchoAsync(session, "enc"));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ConcurrentKeystrokes_ArriveInOrder()
     {
-        if (!_server.Available) return;
+        Skip.IfNot(_server.Available, "OpenSSH server (sshd) not installed");
         await using var manager = new SessionManager(_connector);
         _knownHosts.Trust(await FetchHostKeyAsync());
         var session = manager.CreateTerminal(Spec(_server.ClientKey));
@@ -135,10 +136,10 @@ public sealed class SshIntegrationTests : IClassFixture<LocalSshServer>, IDispos
         await done.Task.WaitAsync(TimeSpan.FromSeconds(10));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task WorkingDirectory_FollowsCd_WithoutWindowTitle_AndInNestedShell()
     {
-        if (!_server.Available) return;
+        Skip.IfNot(_server.Available, "OpenSSH server (sshd) not installed");
         await using var manager = new SessionManager(_connector);
         _knownHosts.Trust(await FetchHostKeyAsync());
         var session = manager.CreateTerminal(Spec(_server.ClientKey));
@@ -158,10 +159,10 @@ public sealed class SshIntegrationTests : IClassFixture<LocalSshServer>, IDispos
         Assert.Equal("/tmp", await WaitForDirectoryAsync(session, "/tmp"));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Sftp_SymlinkToDirectory_CanBeOpened_ButIsNotFollowedRecursively()
     {
-        if (!_server.Available) return;
+        Skip.IfNot(_server.Available, "OpenSSH server (sshd) not installed");
         await using var manager = new SessionManager(_connector);
         var sftp = manager.CreateSftp(Spec(_server.ClientKey));
         await sftp.ConnectAsync();
@@ -189,6 +190,39 @@ public sealed class SshIntegrationTests : IClassFixture<LocalSshServer>, IDispos
         Assert.Equal(["plain.txt"], Directory.GetFileSystemEntries(Path.Combine(download, "links")).Select(Path.GetFileName));
     }
 
+    [SkippableFact]
+    public async Task Sftp_RecursiveDownload_SkipsTraversalNames_AndLinksAtTarget()
+    {
+        Skip.IfNot(_server.Available, "OpenSSH server (sshd) not installed");
+        await using var manager = new SessionManager(_connector);
+        var sftp = manager.CreateSftp(Spec(_server.ClientKey));
+        await sftp.ConnectAsync();
+
+        // A hostile server folder: on Linux "..\\outside.txt" is an ordinary file name, on Windows a path.
+        var remote = Directory.CreateDirectory(Path.Combine(_server.Directory, "hostile")).FullName;
+        File.WriteAllText(Path.Combine(remote, "..\\outside.txt"), "evil");
+        File.WriteAllText(Path.Combine(remote, "ok.txt"), "fine");
+        File.WriteAllText(Path.Combine(remote, "linked.txt"), "overwrite?");
+
+        var download = Directory.CreateDirectory(Path.Combine(_workDir, "safe-dl")).FullName;
+        var victim = Path.Combine(_workDir, "victim.txt");
+        File.WriteAllText(victim, "keep");
+        Directory.CreateDirectory(Path.Combine(download, "hostile"));
+        File.CreateSymbolicLink(Path.Combine(download, "hostile", "linked.txt"), victim);
+
+        await sftp.DownloadAsync((await sftp.ListAsync(_server.Directory)).Single(e => e.Name == "hostile"), download);
+
+        var transfer = sftp.Transfers.Last();
+        Assert.Equal("fine", File.ReadAllText(Path.Combine(download, "hostile", "ok.txt")));
+        Assert.Equal("keep", File.ReadAllText(victim)); // not written through the link
+        Assert.False(File.Exists(Path.Combine(download, "outside.txt")));
+        Assert.Empty(Directory.GetFiles(_workDir, "*outside*", SearchOption.AllDirectories));
+        Assert.Equal(TransferState.Completed, transfer.State);
+        Assert.Contains(transfer.Warnings, w => w.Contains("outside.txt"));  // skipped and reported
+        Assert.Contains(transfer.Warnings, w => w.Contains("Verknüpfung"));  // link at the target skipped and reported
+        Assert.Equal(2, transfer.Warnings.Count);
+    }
+
     private static async Task<string?> WaitForDirectoryAsync(SshTerminalSession session, string expected)
     {
         string? current = null;
@@ -200,10 +234,10 @@ public sealed class SshIntegrationTests : IClassFixture<LocalSshServer>, IDispos
         return current;
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ParallelSessions_AreIndependent()
     {
-        if (!_server.Available) return;
+        Skip.IfNot(_server.Available, "OpenSSH server (sshd) not installed");
         await using var manager = new SessionManager(_connector);
         _knownHosts.Trust(await FetchHostKeyAsync());
 
@@ -218,10 +252,10 @@ public sealed class SshIntegrationTests : IClassFixture<LocalSshServer>, IDispos
         Assert.Equal(5, manager.Count);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Sftp_UploadListDownloadDelete()
     {
-        if (!_server.Available) return;
+        Skip.IfNot(_server.Available, "OpenSSH server (sshd) not installed");
         await using var manager = new SessionManager(_connector);
         var sftp = manager.CreateSftp(Spec(_server.ClientKey));
         await sftp.ConnectAsync();

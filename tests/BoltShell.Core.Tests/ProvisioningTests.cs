@@ -14,6 +14,7 @@ public sealed class ProvisioningTests : IClassFixture<LocalSshServer>, IDisposab
     public ProvisioningTests(LocalSshServer server)
     {
         _server = server;
+        _server.WaitUntilListening(); // a previous test may have reloaded sshd
         Directory.CreateDirectory(_workDir);
         _connector = new SshConnector(new KnownHostsStore(Path.Combine(_workDir, "kh.json")), NullLogger<SshConnector>.Instance)
         {
@@ -57,10 +58,10 @@ public sealed class ProvisioningTests : IClassFixture<LocalSshServer>, IDisposab
         Assert.Equal(new SshCredentials("login-pw", key.PrivateKey, null), spec.Credentials);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Provision_InstallsKey_Saves_AndDisablesPasswordLogin()
     {
-        if (!_server.Available) return;
+        Skip.IfNot(_server.Available, "OpenSSH server (sshd) not installed");
         var conf = Path.Combine(_server.Directory, "sshd_config.d", HostProvisioner.ConfigFileName);
         File.Delete(conf);
         ProvisionedHost? saved = null;
@@ -99,10 +100,10 @@ public sealed class ProvisioningTests : IClassFixture<LocalSshServer>, IDisposab
         Assert.Single(File.ReadAllLines(Path.Combine(_server.Directory, "authorized_keys2")), l => l == saved.Key.PublicKey);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Provision_RollsBackKey_WhenSavingFails()
     {
-        if (!_server.Available) return;
+        Skip.IfNot(_server.Available, "OpenSSH server (sshd) not installed");
         var provisioner = CreateProvisioner(disablePassword: false);
         string? installed = null;
 
@@ -118,10 +119,10 @@ public sealed class ProvisioningTests : IClassFixture<LocalSshServer>, IDisposab
         Assert.Equal(StepStatus.Failed, provisioner.Steps.Single(s => s.Kind == ProvisionStepKind.SaveToPassbolt).Status);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Provision_FailsEarly_WhenSudoPasswordIsWrong()
     {
-        if (!_server.Available) return;
+        Skip.IfNot(_server.Available, "OpenSSH server (sshd) not installed");
         var provisioner = CreateProvisioner(disablePassword: true, password: "wrong");
 
         var ex = await Assert.ThrowsAsync<ProvisioningException>(() => provisioner.RunAsync((_, _) => Task.FromResult<string?>(null)));

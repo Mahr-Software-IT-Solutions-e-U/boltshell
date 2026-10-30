@@ -218,9 +218,14 @@
         }
         else
         {
-            if (!Uri.TryCreate(_serverUrl?.Trim(), UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps && uri.Host != "localhost")
+            Uri uri;
+            try
             {
-                _addError = "Bitte die https://-Adresse des Passbolt-Servers angeben.";
+                uri = PassboltAccount.ValidateServerUrl(_serverUrl);
+            }
+            catch (ArgumentException ex)
+            {
+                _addError = ex.Message;
                 return;
             }
             if (!Guid.TryParse(_userId?.Trim(), out _))
@@ -243,6 +248,11 @@
         catch (InvalidOperationException ex)
         {
             _addError = ex.Message == "This Passbolt account is already configured." ? "Dieses Konto ist bereits verbunden." : ex.Message;
+            return;
+        }
+        catch (ArgumentException ex)
+        {
+            _addError = ex.Message;
             return;
         }
         _name = _serverUrl = _userId = _privateKey = _kitFile = null;

@@ -41,6 +41,7 @@ public sealed class AccountManager : IDisposable
 
     public AccountSession Add(string displayName, Passbolt.PassboltAccount account, int autoLockMinutes = 15)
     {
+        Passbolt.PassboltAccount.ValidateServerUrl(account.BaseUrl);
         if (Accounts.Any(a => a.Config.Account.BaseUrl.Equals(account.BaseUrl, StringComparison.OrdinalIgnoreCase)
                               && a.Config.Account.UserId == account.UserId))
             throw new InvalidOperationException("This Passbolt account is already configured.");

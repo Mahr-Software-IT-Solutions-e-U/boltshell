@@ -66,6 +66,13 @@ public sealed class LocalSshServer : IDisposable
     public string ClientKey => File.ReadAllText(Path.Combine(Directory, "client_key"));
     public string EncryptedClientKey => File.ReadAllText(Path.Combine(Directory, "client_key_enc"));
 
+    /// <summary>Blocks until sshd accepts connections again (it re-executes itself on reload).</summary>
+    public void WaitUntilListening()
+    {
+        if (Available)
+            WaitForPort();
+    }
+
     private void WaitForPort()
     {
         for (var i = 0; i < 50 && _process is { HasExited: false }; i++)

@@ -2,6 +2,7 @@
 @inject AccountManager Accounts
 @inject IDialogService Dialogs
 @inject ISnackbar Snackbar
+@inject IJSRuntime JS
 
 <nav class="sidebar" aria-label="Hosts nach Passbolt-Konto">
     <div class="sidebar-head">
@@ -11,14 +12,14 @@
             <span class="muted" style="font-size:11px; margin-left:auto; margin-right:6px">Filter: @Filter</span>
         }
         <div style="position:relative">
-            <button type="button" class="btn btn-icon btn-sm btn-ghost" aria-label="Host hinzufügen" title="Host hinzufügen"
-                    aria-haspopup="menu" aria-expanded="@(_menuOpen ? "true" : "false")" @onclick="() => _menuOpen = !_menuOpen">
+            <button type="button" class="btn btn-icon btn-sm btn-ghost" aria-label="Host hinzufügen" title="Host hinzufügen" @ref="_menuButton"
+                    aria-haspopup="menu" aria-expanded="@(_menuOpen ? "true" : "false")" @onclick="ToggleMenuAsync">
                 <Icon Name="plus" />
             </button>
             @if (_menuOpen)
             {
                 <div class="menu-backdrop" @onclick="() => _menuOpen = false"></div>
-                <div class="menu" role="menu">
+                <div class="menu" role="menu" style="@_menuStyle">
                     <button type="button" role="menuitem" @onclick="() => Choose(OnProvision)">
                         <Icon Name="server" Size="15" /><span><b>SSH-Host provisionieren</b><br /><span class="muted">Mit Passwort verbinden, Schlüssel einrichten</span></span>
                     </button>
@@ -107,6 +108,21 @@
     [Parameter] public EventCallback OnCreateRdp { get; set; }
 
     private bool _menuOpen;
+    private ElementReference _menuButton;
+    private string _menuStyle = "";
+
+    // The sidebar scrolls (and clips), so the menu is positioned on the viewport below the button,
+    // kept inside the window instead of opening past its left edge.
+    private async Task ToggleMenuAsync()
+    {
+        if (!_menuOpen)
+        {
+            var rect = await JS.InvokeAsync<double[]>("pbsshMenu.anchor", _menuButton);
+            var left = Math.Max(8, rect[0] - 280);
+            _menuStyle = FormattableString.Invariant($"top:{rect[1] + 6:0}px; left:{left:0}px");
+        }
+        _menuOpen = !_menuOpen;
+    }
 
     private Task Choose(EventCallback action)
     {

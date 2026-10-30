@@ -6,7 +6,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationIcon>Assets\icon\app.ico</ApplicationIcon>
     <Product>BoltShell</Product>
-    <Version>0.2.0</Version>
+    <Version>0.2.1</Version>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Photino.Blazor" />
@@ -16,10 +16,18 @@
     <PackageReference Include="Velopack" />
   </ItemGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="BoltShell.App.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\BoltShell.Core\BoltShell.Core.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Content Update="wwwroot\**" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Assets\icon\app.ico;Assets\icon\icon-256.png" CopyToOutputDirectory="PreserveNewest" Link="%(Filename)%(Extension)" />
+  </ItemGroup>
+  <!-- License texts ship with every build and package (GPL for BoltShell, full texts for all bundled components). -->
+  <ItemGroup>
+    <None Include="..\..\LICENSE;..\..\THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Link="%(Filename)%(Extension)" />
+    <None Include="..\..\licenses\*.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Link="licenses\%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

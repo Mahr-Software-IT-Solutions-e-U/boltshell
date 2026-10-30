@@ -11,14 +11,17 @@ public sealed class PgpPublicKeys
 
     public string Fingerprint => Convert.ToHexString(Ring.GetPublicKey().GetFingerprint());
 
-    /// <summary>Key used to encrypt messages for this recipient (prefers subkeys).</summary>
+    /// <summary>
+    /// Key used to encrypt messages for this recipient: a subkey with a valid binding to the primary key (newest first),
+    /// otherwise the primary key. Keys injected without a valid binding are never used.
+    /// </summary>
     public PgpPublicKey EncryptionKey =>
-        Ring.GetPublicKeys().Where(k => k.IsEncryptionKey && !k.HasRevocation())
-            .OrderBy(k => k.IsMasterKey) // subkeys first
-            .FirstOrDefault()
-        ?? throw new PgpException("Public key has no usable encryption key.");
+        PgpKeyValidation.UsableKeys(Ring, PgpKeyUsage.Encrypt).FirstOrDefault()
+        ?? throw new PgpException("Public key has no valid encryption key.");
 
-    public PgpPublicKey? FindKey(long keyId) => Ring.GetPublicKey(keyId);
+    /// <summary>The key with <paramref name="keyId"/> if it may sign for this certificate (primary or properly bound signing subkey).</summary>
+    public PgpPublicKey? FindKey(long keyId) =>
+        PgpKeyValidation.UsableKeys(Ring, PgpKeyUsage.Sign).FirstOrDefault(k => k.KeyId == keyId);
 
     public static PgpPublicKeys Parse(string armored)
     {

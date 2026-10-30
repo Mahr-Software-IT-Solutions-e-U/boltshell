@@ -4,6 +4,7 @@
     <Project Path="src/BoltShell.Core/BoltShell.Core.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/BoltShell.App.Tests/BoltShell.App.Tests.csproj" />
     <Project Path="tests/BoltShell.Core.Tests/BoltShell.Core.Tests.csproj" />
   </Folder>
 </Solution>

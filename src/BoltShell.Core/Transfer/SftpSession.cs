@@ -23,6 +23,15 @@ public sealed class TransferItem
     public TransferState State { get; internal set; } = TransferState.Queued;
     public string? Error { get; internal set; }
 
+    /// <summary>Entries skipped during a folder download because their names were unsafe locally.</summary>
+    public IReadOnlyList<string> Warnings => _warnings;
+    private readonly List<string> _warnings = [];
+    internal void Warn(string message)
+    {
+        lock (_warnings)
+            _warnings.Add(message);
+    }
+
     public double Percent => TotalBytes > 0 ? Math.Min(100, TransferredBytes * 100.0 / TotalBytes) : State == TransferState.Completed ? 100 : 0;
     public void Cancel() => Cts.Cancel();
 }
@@ -163,22 +172,25 @@ public sealed class SftpSession : IAsyncDisposable
         });
     }
 
-    /// <summary>Downloads a remote file or directory (recursively) into <paramref name="localDirectory"/>.</summary>
+    /// <summary>
+    /// Downloads a remote file or directory (recursively) into <paramref name="localDirectory"/>. Remote names are
+    /// checked with <see cref="LocalPaths"/>: the download never writes outside the chosen folder.
+    /// </summary>
     public Task DownloadAsync(RemoteEntry entry, string localDirectory)
     {
-        var destination = Path.Combine(localDirectory, entry.Name);
-        var item = AddTransfer(entry.Name, entry.FullPath, destination, TransferDirection.Download);
+        var item = AddTransfer(entry.Name, entry.FullPath, Path.Join(localDirectory, entry.Name), TransferDirection.Download);
         return RunAsync(item, async ct =>
         {
+            var destination = LocalPaths.Child(localDirectory, entry.Name);
             if (entry.IsDirectory)
             {
                 item.TotalBytes = await MeasureAsync(entry.FullPath, ct);
-                await DownloadDirectoryAsync(entry.FullPath, destination, item, ct);
+                await DownloadDirectoryAsync(entry.FullPath, destination, entry.Name, item, ct);
             }
             else
             {
                 item.TotalBytes = entry.Size;
-                await DownloadFileAsync(entry.FullPath, destination, item, ct);
+                await DownloadFileAsync(entry.FullPath, destination, entry.Name, item, ct);
             }
         });
     }
@@ -229,32 +241,43 @@ public sealed class SftpSession : IAsyncDisposable
         }
     }
 
-    private async Task DownloadDirectoryAsync(string remoteDir, string localDir, TransferItem item, CancellationToken ct)
+    private async Task DownloadDirectoryAsync(string remoteDir, string localDir, string name, TransferItem item, CancellationToken ct)
     {
+        // SSH.NET's SCP client builds local paths from server-sent names without our checks.
         if (_scp is not null)
-        {
-            await Task.Run(() => _scp.Download(remoteDir, Directory.CreateDirectory(localDir)), ct);
-            return;
-        }
+            throw new NotSupportedException("Ordner können über SCP aus Sicherheitsgründen nicht heruntergeladen werden; bitte einzelne Dateien wählen.");
+
+        LocalPaths.EnsureNotLink(localDir, name);
         Directory.CreateDirectory(localDir);
         foreach (var child in await ListAsync(remoteDir, ct))
         {
             // Links inside a downloaded tree are skipped: following them could loop or pull in unrelated data.
             if (child.IsSymlink)
                 continue;
-            var target = Path.Combine(localDir, child.Name);
-            if (child.IsDirectory)
-                await DownloadDirectoryAsync(child.FullPath, target, item, ct);
-            else
-                await DownloadFileAsync(child.FullPath, target, item, ct);
+            // Unsafe names and links at the target are skipped and reported; the rest of the folder is still downloaded.
+            try
+            {
+                var target = LocalPaths.Child(localDir, child.Name);
+                if (child.IsDirectory)
+                    await DownloadDirectoryAsync(child.FullPath, target, child.Name, item, ct);
+                else
+                    await DownloadFileAsync(child.FullPath, target, child.Name, item, ct);
+            }
+            catch (UnsafeRemoteNameException ex)
+            {
+                item.Warn(ex.Message);
+            }
         }
     }
 
-    private async Task DownloadFileAsync(string remoteFile, string localFile, TransferItem item, CancellationToken ct)
+    private async Task DownloadFileAsync(string remoteFile, string localFile, string name, TransferItem item, CancellationToken ct)
     {
         var start = item.TransferredBytes;
         var partial = localFile + ".part";
-        await using (var output = File.Create(partial))
+        // Never write through an existing link: File.Create would follow it out of the download folder.
+        LocalPaths.EnsureNotLink(localFile, name);
+        LocalPaths.EnsureNotLink(partial, name);
+        await using (var output = new FileStream(partial, FileMode.Create, FileAccess.Write, FileShare.None))
         {
             if (_sftp is not null)
                 await _sftp.DownloadFileAsync(remoteFile, output, new SyncProgress<DownloadFileProgressReport>(r => Report(item, start + (long)r.TotalBytesDownloaded)), ct);

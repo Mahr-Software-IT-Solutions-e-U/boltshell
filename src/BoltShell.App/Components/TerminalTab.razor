@@ -43,6 +43,9 @@
 
     [Parameter] public EventCallback OnSizeChanged { get; set; }
 
+    /// <summary>Called before every connect; returns false if credentials are not available (e.g. account locked).</summary>
+    [Parameter] public Func<Task<bool>>? BeforeConnect { get; set; }
+
     private readonly HashSet<string> _addons = ["addon-fit", "addon-web-links"];
     private readonly Channel<byte[]> _output = Channel.CreateUnbounded<byte[]>(new UnboundedChannelOptions { SingleReader = true });
     private readonly CancellationTokenSource _cts = new();
@@ -88,6 +91,11 @@
 
     private async Task ConnectAsync()
     {
+        if (BeforeConnect is not null && !await BeforeConnect())
+        {
+            await _terminal.WriteLine("\u001b[33mDas Passbolt-Konto ist gesperrt – zum Verbinden bitte entsperren.\u001b[0m");
+            return;
+        }
         while (true)
         {
             try

@@ -49,6 +49,15 @@ public sealed class RdpProxy(KnownHostsStore trustStore, ILogger<RdpProxy> logge
 
     public void Unregister(string sessionId) => _sessions.TryRemove(sessionId, out _);
 
+    /// <summary>Replaces the connection data of a registered session (e.g. to drop or refresh credentials).</summary>
+    public RdpProxySession Update(RdpProxySession session, RdpConnectionSpec spec)
+    {
+        var updated = session with { Spec = spec };
+        if (_sessions.ContainsKey(session.Id))
+            _sessions[session.Id] = updated;
+        return updated;
+    }
+
     private int EnsureStarted()
     {
         lock (_startLock)
