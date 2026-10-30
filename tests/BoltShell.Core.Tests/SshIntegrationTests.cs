@@ -318,6 +318,47 @@ public sealed class SshIntegrationTests : IClassFixture<LocalSshServer>, IDispos
         return captured!;
     }
 
+    [Fact]
+    public async Task SilentServer_FailsAfterConnectTimeout()
+    {
+        // Accepts TCP but never sends the SSH banner.
+        var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        listener.Start();
+        var accepted = listener.AcceptTcpClientAsync();
+        try
+        {
+            var connector = new SshConnector(_knownHosts, NullLogger<SshConnector>.Instance) { ConnectTimeout = TimeSpan.FromSeconds(1) };
+            var spec = new SshConnectionSpec("silent", new SshTarget("127.0.0.1", ((System.Net.IPEndPoint)listener.LocalEndpoint).Port), "u",
+                new SshCredentials("pw", null, null));
+            using var client = connector.CreateSshClient(spec);
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+
+            var ex = await Assert.ThrowsAsync<Renci.SshNet.Common.SshOperationTimeoutException>(() => connector.ConnectAsync(client));
+            Assert.InRange(watch.Elapsed, TimeSpan.Zero, TimeSpan.FromSeconds(10)); // not the 2 minute login timeout
+            Assert.Contains("did not respond within 1 seconds", ex.Message);
+        }
+        finally
+        {
+            listener.Stop();
+            (await accepted).Dispose();
+        }
+    }
+
+    [SkippableFact]
+    public async Task SlowPromptDuringLogin_IsNotCutOffByConnectTimeout()
+    {
+        Skip.IfNot(_server.Available, "OpenSSH server (sshd) not installed");
+        // The user takes longer than ConnectTimeout to confirm the host key (same for typing a one-time code).
+        var connector = new SshConnector(_knownHosts, NullLogger<SshConnector>.Instance)
+        {
+            ConnectTimeout = TimeSpan.FromSeconds(1),
+            HostKeyPrompt = async _ => { await Task.Delay(2500); return true; },
+        };
+        await using var manager = new SessionManager(connector);
+
+        Assert.Contains("pb-slow-42", await RunEchoAsync(manager.CreateTerminal(Spec(_server.ClientKey)), "slow"));
+    }
+
     private static async Task<string> RunEchoAsync(SshTerminalSession session, string tag)
     {
         var output = new StringBuilder();

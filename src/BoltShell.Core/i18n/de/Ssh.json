@@ -7,5 +7,6 @@
   "The SSH private key needs a passphrase.": "Der private SSH-Schlüssel benötigt eine Passphrase.",
   "The host key of {0} (SHA256:{1}) does not match the host identity stored in Passbolt ({2}). Connection refused to protect against man-in-the-middle attacks. If the server was reinstalled, update the resource in Passbolt.": "Der Host-Key von {0} (SHA256:{1}) stimmt nicht mit der in Passbolt hinterlegten Host-Identität ({2}) überein. Verbindung zum Schutz vor Man-in-the-Middle-Angriffen abgelehnt. Wurde der Server neu installiert, bitte die Ressource in Passbolt aktualisieren.",
   "The host key of {0} was not accepted.": "Der Host-Key von {0} wurde nicht akzeptiert.",
-  "No password or private key available for '{0}'.": "Für „{0}“ ist weder ein Passwort noch ein privater Schlüssel verfügbar."
+  "No password or private key available for '{0}'.": "Für „{0}“ ist weder ein Passwort noch ein privater Schlüssel verfügbar.",
+  "{0}:{1} did not respond within {2} seconds.": "{0}:{1} hat nicht innerhalb von {2} Sekunden geantwortet."
 }
