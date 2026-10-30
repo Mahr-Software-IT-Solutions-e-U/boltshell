@@ -111,7 +111,8 @@
                 }
             </div>
 
-            <section class="col-side card" aria-labelledby="add-title">
+            <div class="col-side" style="display:flex; flex-direction:column; gap:16px">
+            <section class="card" aria-labelledby="add-title">
                 <h2 id="add-title">@Tr("Add account")</h2>
                 <label class="field">@Tr("Display name")
                     <input class="input" placeholder="@Tr("e.g. Example Customer Ltd")" @bind="_name" @bind:event="oninput" />
@@ -165,6 +166,11 @@
                 }
                 <button type="button" class="btn btn-primary btn-lg" @onclick="Add">@Tr("Connect account")</button>
             </section>
+            @if (!FirstRun)
+            {
+                <UpdateCard />
+            }
+            </div>
         </div>
     </div>
 </div>

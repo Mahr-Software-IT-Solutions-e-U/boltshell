@@ -25,7 +25,7 @@ Secrets are decrypted locally, only when a connection is opened.
 - SFTP upload/download (files, folders, drag & drop) with progress and cancel; symlinked folders can be opened; SCP fallback for servers without SFTP
 - Host provisioning: turn a password-only host into a key-based Passbolt host (see below)
 - RDP in tabs (IronRDP web client, NLA/CredSSP) with credentials from Passbolt; create RDP hosts incl. pinned server certificate
-- Automatic updates from GitHub Releases
+- Automatic updates from GitHub Releases: checked at start and every 6 hours, manual check and installed version on the accounts page
 - Frameless window with the app's own title bar (set `"NativeTitleBar": true` in settings.json for the OS title bar)
 - English and German UI (follows the OS language, switchable on the accounts page)
 

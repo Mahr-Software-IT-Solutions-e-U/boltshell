@@ -1,0 +1,19 @@
+{
+  "Install update": "Update installieren",
+  "BoltShell restarts for the update; {0} open session(s) will be disconnected.": "BoltShell wird für das Update neu gestartet; {0} offene Sitzung(en) werden getrennt.",
+  "Install": "Installieren",
+  "Update failed: {0}": "Update fehlgeschlagen: {0}",
+  "Updates": "Updates",
+  "Installed version: {0}": "Installierte Version: {0}",
+  "Check for updates": "Nach Updates suchen",
+  "Checking …": "Suche …",
+  "Version {0} is available.": "Version {0} ist verfügbar.",
+  "Install and restart": "Installieren und neu starten",
+  "Downloading update … {0} %": "Update wird geladen … {0} %",
+  "BoltShell is up to date.": "BoltShell ist aktuell.",
+  "Last checked: {0}": "Zuletzt geprüft: {0}",
+  "Not checked yet.": "Noch nicht geprüft.",
+  "Checked automatically at start and every {0} hours.": "Wird beim Start und alle {0} Stunden automatisch geprüft.",
+  "The update check failed: {0}": "Die Update-Prüfung ist fehlgeschlagen: {0}",
+  "Automatic updates are only available in the installed version (not in portable or development builds). New versions are on GitHub Releases.": "Automatische Updates gibt es nur in der installierten Version (nicht in der portablen oder einer Entwicklungsversion). Neue Versionen gibt es bei GitHub Releases."
+}

@@ -1,0 +1,77 @@
+@implements IDisposable
+@inject UpdateService Updates
+@inject WorkspaceState State
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+<section class="card update-card" aria-labelledby="update-title">
+    <h2 id="update-title">@Tr("Updates")</h2>
+    <p class="muted" style="margin:0; font-size:13px">@Tr("Installed version: {0}", Updates.CurrentVersion)</p>
+
+    @if (!Updates.IsSupported)
+    {
+        <p class="muted" style="margin:0; font-size:12px; line-height:1.5">
+            @Tr("Automatic updates are only available in the installed version (not in portable or development builds). New versions are on GitHub Releases.")
+            @if (UpdateService.RepositoryUrl is { } repo)
+            {
+                <br /><span class="mono" style="user-select:text">@repo/releases</span>
+            }
+        </p>
+    }
+    else
+    {
+        @if (Updates.AvailableVersion is { } version)
+        {
+            <p style="margin:0; font-size:13px; color:var(--ok-text)" role="status">@Tr("Version {0} is available.", version)</p>
+            <button type="button" class="btn btn-primary" disabled="@Updates.IsDownloading" @onclick="InstallAsync">
+                @(Updates.IsDownloading ? Tr("Downloading update … {0} %", Updates.Progress) : Tr("Install and restart"))
+            </button>
+        }
+        else if (Updates.LastError is { } error)
+        {
+            <span class="error-text" role="alert">@Tr("The update check failed: {0}", error)</span>
+        }
+        else if (Updates.LastChecked is not null && !Updates.IsChecking)
+        {
+            <p style="margin:0; font-size:13px; color:var(--ok-text)" role="status">@Tr("BoltShell is up to date.")</p>
+        }
+
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap">
+            <button type="button" class="btn" disabled="@(Updates.IsChecking || Updates.IsDownloading)" @onclick="CheckAsync">
+                <Icon Name="refresh" Size="14" />@(Updates.IsChecking ? Tr("Checking …") : Tr("Check for updates"))
+            </button>
+            <span class="muted" style="font-size:12px">
+                @(Updates.LastChecked is { } at ? Tr("Last checked: {0}", at.ToString("HH:mm")) : Tr("Not checked yet."))
+            </span>
+        </div>
+        <p class="muted" style="margin:0; font-size:12px">@Tr("Checked automatically at start and every {0} hours.", (int)UpdateService.CheckInterval.TotalHours)</p>
+    }
+</section>
+
+@code {
+    protected override void OnInitialized() => Updates.Changed += OnChanged;
+
+    private Task CheckAsync() => Updates.CheckAsync();
+
+    private Task InstallAsync() => InstallAsync(Updates, State, Dialogs, Snackbar);
+
+    /// <summary>Installs the available update after confirming that open sessions will be disconnected.</summary>
+    public static async Task InstallAsync(UpdateService updates, WorkspaceState state, IDialogService dialogs, ISnackbar snackbar)
+    {
+        if (state.Tabs.Count > 0 && !await TextPromptDialog.ConfirmAsync(dialogs, Tr("Install update"),
+                Tr("BoltShell restarts for the update; {0} open session(s) will be disconnected.", state.Tabs.Count), Tr("Install")))
+            return;
+        try
+        {
+            await updates.InstallAsync();
+        }
+        catch (Exception ex)
+        {
+            snackbar.Add(Tr("Update failed: {0}", ex.Message), Severity.Error);
+        }
+    }
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Updates.Changed -= OnChanged;
+}

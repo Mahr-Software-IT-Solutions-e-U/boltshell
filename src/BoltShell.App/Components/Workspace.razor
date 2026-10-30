@@ -161,23 +161,10 @@
         State.Changed += OnChanged;
         Accounts.Changed += OnAccountsChanged;
         Updates.Changed += OnChanged;
-        _ = Updates.CheckAsync();
+        Updates.Start();
     }
 
-    private async Task InstallUpdateAsync()
-    {
-        if (State.Tabs.Count > 0 && !await TextPromptDialog.ConfirmAsync(Dialogs, Tr("Install update"),
-                Tr("BoltShell restarts for the update; {0} open session(s) will be disconnected.", State.Tabs.Count), Tr("Install")))
-            return;
-        try
-        {
-            await Updates.InstallAsync();
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add(Tr("Update failed: {0}", ex.Message), Severity.Error);
-        }
-    }
+    private Task InstallUpdateAsync() => UpdateCard.InstallAsync(Updates, State, Dialogs, Snackbar);
 
     private async Task OpenHostAsync((AccountSession Account, PassboltResource Resource) host)
     {
