@@ -38,6 +38,7 @@ html, body {
     height: 100%;
     margin: 0;
     overflow: hidden;
+    overscroll-behavior: none;
     background: var(--bg);
     color: var(--text);
     font-family: var(--sans);
@@ -46,7 +47,8 @@ html, body {
 
 *, *::before, *::after { box-sizing: border-box; }
 
-app { display: block; height: 100%; }
+/* The document itself never scrolls (also not programmatically); only inner areas do. */
+app { display: block; position: fixed; inset: 0; overflow: hidden; }
 
 a { color: var(--accent); }
 a:hover { color: var(--accent-hover); }
@@ -142,7 +144,7 @@ textarea.input { height: auto; padding: 10px 12px; font-family: var(--mono); fon
 
 /* ---------- Workspace ---------- */
 
-.ws { height: 100vh; display: flex; flex-direction: column; }
+.ws { height: 100%; display: flex; flex-direction: column; }
 
 .ws-header {
     display: flex;
@@ -416,8 +418,10 @@ textarea.input { height: auto; padding: 10px 12px; font-family: var(--mono); fon
 
 /* ---------- Accounts page ---------- */
 
-.page { height: 100vh; overflow-y: auto; }
+.page { height: 100%; display: flex; flex-direction: column; overflow: hidden; }
+.page-scroll { flex: 1; min-height: 0; overflow-y: auto; }
 .page-header {
+    flex: none;
     display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
     padding: 12px 24px; background: var(--panel); border-bottom: 1px solid var(--line);
 }
@@ -490,6 +494,18 @@ textarea.input { height: auto; padding: 10px 12px; font-family: var(--mono); fon
 }
 .wc-btn:hover { background: #20252D; color: var(--text); }
 .wc-close:hover { background: #C42B1C; color: #fff; }
+
+/* macOS: traffic lights on the left; symbols appear when hovering the group. */
+.traffic-lights { display: flex; align-items: center; gap: 8px; margin-right: 4px; }
+.tl-btn {
+    width: 12px; height: 12px; padding: 0; border-radius: 50%; border: .5px solid rgba(0, 0, 0, .25);
+    display: inline-flex; align-items: center; justify-content: center; cursor: default; color: rgba(0, 0, 0, .6);
+}
+.tl-btn svg { opacity: 0; }
+.traffic-lights:hover .tl-btn svg, .tl-btn:focus-visible svg { opacity: 1; }
+.tl-close { background: #FF5F57; }
+.tl-min { background: #FEBC2E; }
+.tl-zoom { background: #28C840; }
 
 .resize-grip { position: fixed; z-index: 2000; }
 .resize-n, .resize-s { left: 8px; right: 8px; height: 5px; cursor: ns-resize; }

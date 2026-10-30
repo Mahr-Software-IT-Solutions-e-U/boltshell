@@ -6,6 +6,7 @@
 
 <div class="page">
     <header class="page-header" data-drag>
+        <WindowControls Leading="true" />
         @if (!FirstRun)
         {
             <button type="button" class="btn btn-sm" @onclick="OnBack"><Icon Name="back" Size="14" StrokeWidth="2.2" />@Tr("Back to sessions")</button>
@@ -26,150 +27,152 @@
         <WindowControls />
     </header>
 
-    <div class="page-body">
-        <div style="display:flex; flex-direction:column; gap:6px">
-            <h1>@(FirstRun ? Tr("Welcome") : Tr("Passbolt accounts"))</h1>
-            <p class="lead">
-                @Tr("Each account provides SSH hosts, private keys and passwords from Passbolt. Secrets are only decrypted when a connection is established and are never written to disk.")
-            </p>
-        </div>
+    <div class="page-scroll">
+        <div class="page-body">
+            <div style="display:flex; flex-direction:column; gap:6px">
+                <h1>@(FirstRun ? Tr("Welcome") : Tr("Passbolt accounts"))</h1>
+                <p class="lead">
+                    @Tr("Each account provides SSH hosts, private keys and passwords from Passbolt. Secrets are only decrypted when a connection is established and are never written to disk.")
+                </p>
+            </div>
 
-        <div class="cols">
-            <div class="col-main">
-                @if (Accounts.Accounts.Count == 0)
-                {
-                    <div class="card"><p class="muted" style="margin:0">@Tr("No account connected yet. Add your first Passbolt account on the right.")</p></div>
-                }
-                @foreach (var account in Accounts.Accounts)
-                {
-                    var unlocked = account.IsUnlocked;
-                    <article class="card" @key="account.Id">
-                        <div class="card-top">
-                            <div class="card-icon" style="background:@(unlocked ? "#13261C" : "#2A2110"); color:@(unlocked ? "#7EE2A8" : "#F2C66B")">
-                                <Icon Name="@(unlocked ? "unlocked" : "locked")" Size="20" />
-                            </div>
-                            <div style="flex:1 1 240px; display:flex; flex-direction:column; gap:3px; min-width:0">
-                                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
-                                    <h2>@account.Config.DisplayName</h2>
-                                    <span class="badge @(unlocked ? "badge-ok" : "badge-locked")">@(unlocked ? Tr("Unlocked") : account.MfaPending ? Tr("TOTP required") : Tr("Locked"))</span>
+            <div class="cols">
+                <div class="col-main">
+                    @if (Accounts.Accounts.Count == 0)
+                    {
+                        <div class="card"><p class="muted" style="margin:0">@Tr("No account connected yet. Add your first Passbolt account on the right.")</p></div>
+                    }
+                    @foreach (var account in Accounts.Accounts)
+                    {
+                        var unlocked = account.IsUnlocked;
+                        <article class="card" @key="account.Id">
+                            <div class="card-top">
+                                <div class="card-icon" style="background:@(unlocked ? "#13261C" : "#2A2110"); color:@(unlocked ? "#7EE2A8" : "#F2C66B")">
+                                    <Icon Name="@(unlocked ? "unlocked" : "locked")" Size="20" />
                                 </div>
-                                <span class="acc-url">@account.Config.Account.BaseUrl@(account.Config.Account.Username is { } u ? " · " + u : "")</span>
+                                <div style="flex:1 1 240px; display:flex; flex-direction:column; gap:3px; min-width:0">
+                                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+                                        <h2>@account.Config.DisplayName</h2>
+                                        <span class="badge @(unlocked ? "badge-ok" : "badge-locked")">@(unlocked ? Tr("Unlocked") : account.MfaPending ? Tr("TOTP required") : Tr("Locked"))</span>
+                                    </div>
+                                    <span class="acc-url">@account.Config.Account.BaseUrl@(account.Config.Account.Username is { } u ? " · " + u : "")</span>
+                                </div>
+                                <div style="display:flex; gap:8px; flex-wrap:wrap">
+                                    @if (unlocked)
+                                    {
+                                        <button type="button" class="btn" @onclick="() => RefreshAsync(account)" disabled="@(_busy == account.Id)">@Tr("Sync")</button>
+                                        <button type="button" class="btn" @onclick="account.Lock">@Tr("Lock")</button>
+                                    }
+                                    <button type="button" class="btn btn-icon" aria-label="@Tr("Remove account {0}", account.Config.DisplayName)" title="@Tr("Remove account")" @onclick="() => RemoveAsync(account)">
+                                        <Icon Name="trash" Size="15" />
+                                    </button>
+                                </div>
                             </div>
-                            <div style="display:flex; gap:8px; flex-wrap:wrap">
-                                @if (unlocked)
-                                {
-                                    <button type="button" class="btn" @onclick="() => RefreshAsync(account)" disabled="@(_busy == account.Id)">@Tr("Sync")</button>
-                                    <button type="button" class="btn" @onclick="account.Lock">@Tr("Lock")</button>
-                                }
-                                <button type="button" class="btn btn-icon" aria-label="@Tr("Remove account {0}", account.Config.DisplayName)" title="@Tr("Remove account")" @onclick="() => RemoveAsync(account)">
-                                    <Icon Name="trash" Size="15" />
-                                </button>
-                            </div>
-                        </div>
 
-                        <dl class="stats">
-                            <div class="stat"><dt>@Tr("SSH hosts")</dt><dd>@(account.Resources.Count == 0 && !unlocked ? "–" : HostCount(account.Hosts.Count()))</dd></div>
-                            <div class="stat"><dt>@Tr("Detection")</dt><dd class="mono" style="font-size:14px">ssh://</dd></div>
-                            <div class="stat">
-                                <dt><label for="lock-@account.Id">@Tr("Locks automatically")</label></dt>
-                                <dd>
-                                    <select id="lock-@account.Id" value="@account.Config.AutoLockMinutes" @onchange="e => SetAutoLock(account, e)">
-                                        @foreach (var (minutes, label) in AutoLockOptions)
-                                        {
-                                            <option value="@minutes">@label</option>
-                                        }
-                                    </select>
-                                </dd>
-                            </div>
-                        </dl>
+                            <dl class="stats">
+                                <div class="stat"><dt>@Tr("SSH hosts")</dt><dd>@(account.Resources.Count == 0 && !unlocked ? "–" : HostCount(account.Hosts.Count()))</dd></div>
+                                <div class="stat"><dt>@Tr("Detection")</dt><dd class="mono" style="font-size:14px">ssh://</dd></div>
+                                <div class="stat">
+                                    <dt><label for="lock-@account.Id">@Tr("Locks automatically")</label></dt>
+                                    <dd>
+                                        <select id="lock-@account.Id" value="@account.Config.AutoLockMinutes" @onchange="e => SetAutoLock(account, e)">
+                                            @foreach (var (minutes, label) in AutoLockOptions)
+                                            {
+                                                <option value="@minutes">@label</option>
+                                            }
+                                        </select>
+                                    </dd>
+                                </div>
+                            </dl>
 
-                        @if (!unlocked)
-                        {
-                            <form class="inset" @onsubmit="() => UnlockAsync(account)" @onsubmit:preventDefault>
-                                @if (account.MfaPending)
+                            @if (!unlocked)
+                            {
+                                <form class="inset" @onsubmit="() => UnlockAsync(account)" @onsubmit:preventDefault>
+                                    @if (account.MfaPending)
+                                    {
+                                        <label class="field" style="flex:1 1 260px">@Tr("One-time code (TOTP)")
+                                            <input class="input mono" inputmode="numeric" autocomplete="one-time-code" maxlength="6" @bind="_totp" @bind:event="oninput" />
+                                        </label>
+                                    }
+                                    else
+                                    {
+                                        <label class="field" style="flex:1 1 260px">@Tr("Passbolt key passphrase")
+                                            <input class="input" type="password" @bind="_passphrase" @bind:event="oninput" style="background:var(--card)" />
+                                        </label>
+                                    }
+                                    <button type="submit" class="btn btn-primary" style="height:40px" disabled="@(_busy == account.Id)">
+                                        @(_busy == account.Id ? Tr("Please wait…") : account.MfaPending ? Tr("Confirm") : Tr("Unlock"))
+                                    </button>
+                                    @if (_unlockError is { } err && _errorFor == account.Id)
+                                    {
+                                        <span class="error-text" role="alert" style="flex-basis:100%">@err</span>
+                                    }
+                                </form>
+                            }
+                        </article>
+                    }
+                </div>
+
+                <div class="col-side" style="display:flex; flex-direction:column; gap:16px">
+                <section class="card" aria-labelledby="add-title">
+                    <h2 id="add-title">@Tr("Add account")</h2>
+                    <label class="field">@Tr("Display name")
+                        <input class="input" placeholder="@Tr("e.g. Example Customer Ltd")" @bind="_name" @bind:event="oninput" />
+                    </label>
+
+                    @if (!_manual)
+                    {
+                        <div style="display:flex; flex-direction:column; gap:6px">
+                            <span style="font-size:12px; color:var(--text-2)">@Tr("Account kit from the Passbolt extension")</span>
+                            <div class="upload @(_kit is not null ? "done" : "")">
+                                <Icon Name="key" Size="22" Color="@(_kit is not null ? "#7EE2A8" : "#C9CED6")" StrokeWidth="1.8" />
+                                @if (_kit is not null)
                                 {
-                                    <label class="field" style="flex:1 1 260px">@Tr("One-time code (TOTP)")
-                                        <input class="input mono" inputmode="numeric" autocomplete="one-time-code" maxlength="6" @bind="_totp" @bind:event="oninput" />
-                                    </label>
+                                    <span>@Tr("{0} loaded · {1}", _kitFile, _kit.BaseUrl)</span>
                                 }
                                 else
                                 {
-                                    <label class="field" style="flex:1 1 260px">@Tr("Passbolt key passphrase")
-                                        <input class="input" type="password" @bind="_passphrase" @bind:event="oninput" style="background:var(--card)" />
-                                    </label>
+                                    <span>@Tr("Drop {0} here or browse", "account-kit.passbolt")</span>
                                 }
-                                <button type="submit" class="btn btn-primary" style="height:40px" disabled="@(_busy == account.Id)">
-                                    @(_busy == account.Id ? Tr("Please wait…") : account.MfaPending ? Tr("Confirm") : Tr("Unlock"))
-                                </button>
-                                @if (_unlockError is { } err && _errorFor == account.Id)
-                                {
-                                    <span class="error-text" role="alert" style="flex-basis:100%">@err</span>
-                                }
-                            </form>
-                        }
-                    </article>
-                }
-            </div>
-
-            <div class="col-side" style="display:flex; flex-direction:column; gap:16px">
-            <section class="card" aria-labelledby="add-title">
-                <h2 id="add-title">@Tr("Add account")</h2>
-                <label class="field">@Tr("Display name")
-                    <input class="input" placeholder="@Tr("e.g. Example Customer Ltd")" @bind="_name" @bind:event="oninput" />
-                </label>
-
-                @if (!_manual)
-                {
-                    <div style="display:flex; flex-direction:column; gap:6px">
-                        <span style="font-size:12px; color:var(--text-2)">@Tr("Account kit from the Passbolt extension")</span>
-                        <div class="upload @(_kit is not null ? "done" : "")">
-                            <Icon Name="key" Size="22" Color="@(_kit is not null ? "#7EE2A8" : "#C9CED6")" StrokeWidth="1.8" />
-                            @if (_kit is not null)
-                            {
-                                <span>@Tr("{0} loaded · {1}", _kitFile, _kit.BaseUrl)</span>
-                            }
-                            else
-                            {
-                                <span>@Tr("Drop {0} here or browse", "account-kit.passbolt")</span>
-                            }
-                            <InputFile OnChange="LoadKitAsync" accept=".passbolt,.txt,.json" aria-label="@Tr("Choose account kit")" />
+                                <InputFile OnChange="LoadKitAsync" accept=".passbolt,.txt,.json" aria-label="@Tr("Choose account kit")" />
+                            </div>
+                            <span class="muted" style="font-size:11px; line-height:1.4">@Tr("Passbolt extension → Profile → Set up desktop app → Download account kit")</span>
+                            <button type="button" class="linklike" @onclick="() => _manual = true">@Tr("Enter manually instead")</button>
                         </div>
-                        <span class="muted" style="font-size:11px; line-height:1.4">@Tr("Passbolt extension → Profile → Set up desktop app → Download account kit")</span>
-                        <button type="button" class="linklike" @onclick="() => _manual = true">@Tr("Enter manually instead")</button>
-                    </div>
-                }
-                else
-                {
-                    <label class="field">@Tr("Server URL")
-                        <input class="input mono" type="url" placeholder="https://passbolt.example.at" @bind="_serverUrl" @bind:event="oninput" />
-                    </label>
-                    <label class="field">@Tr("User ID (UUID)")
-                        <input class="input mono" @bind="_userId" @bind:event="oninput" />
-                    </label>
-                    <label class="field">@Tr("Private OpenPGP key")
-                        <textarea class="input" rows="5" placeholder="-----BEGIN PGP PRIVATE KEY BLOCK-----" @bind="_privateKey" @bind:event="oninput"></textarea>
-                    </label>
-                    <button type="button" class="linklike" @onclick="() => _manual = false">@Tr("Use account kit")</button>
-                }
+                    }
+                    else
+                    {
+                        <label class="field">@Tr("Server URL")
+                            <input class="input mono" type="url" placeholder="https://passbolt.example.at" @bind="_serverUrl" @bind:event="oninput" />
+                        </label>
+                        <label class="field">@Tr("User ID (UUID)")
+                            <input class="input mono" @bind="_userId" @bind:event="oninput" />
+                        </label>
+                        <label class="field">@Tr("Private OpenPGP key")
+                            <textarea class="input" rows="5" placeholder="-----BEGIN PGP PRIVATE KEY BLOCK-----" @bind="_privateKey" @bind:event="oninput"></textarea>
+                        </label>
+                        <button type="button" class="linklike" @onclick="() => _manual = false">@Tr("Use account kit")</button>
+                    }
 
-                <label class="field">@Tr("Lock automatically")
-                    <select class="input" @bind="_autoLock">
-                        @foreach (var (minutes, label) in AutoLockOptions)
-                        {
-                            <option value="@minutes">@label</option>
-                        }
-                    </select>
-                </label>
-                @if (_addError is not null)
+                    <label class="field">@Tr("Lock automatically")
+                        <select class="input" @bind="_autoLock">
+                            @foreach (var (minutes, label) in AutoLockOptions)
+                            {
+                                <option value="@minutes">@label</option>
+                            }
+                        </select>
+                    </label>
+                    @if (_addError is not null)
+                    {
+                        <span class="error-text" role="alert">@_addError</span>
+                    }
+                    <button type="button" class="btn btn-primary btn-lg" @onclick="Add">@Tr("Connect account")</button>
+                </section>
+                @if (!FirstRun)
                 {
-                    <span class="error-text" role="alert">@_addError</span>
+                    <UpdateCard />
                 }
-                <button type="button" class="btn btn-primary btn-lg" @onclick="Add">@Tr("Connect account")</button>
-            </section>
-            @if (!FirstRun)
-            {
-                <UpdateCard />
-            }
+                </div>
             </div>
         </div>
     </div>
