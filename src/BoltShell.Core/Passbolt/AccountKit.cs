@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using Org.BouncyCastle.Bcpg.OpenPgp;
+using static BoltShell.Core.Localization.Texts;
 
 namespace BoltShell.Core.Passbolt;
 
@@ -19,7 +20,7 @@ public static class AccountKit
         string Required(string name) =>
             root.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String && v.GetString() is { Length: > 0 } s
                 ? s
-                : throw new FormatException($"Account kit is missing '{name}'.");
+                : throw new FormatException(Tr("Account kit is missing '{0}'.", name));
 
         string? serverFingerprint = null;
         if (root.TryGetProperty("server_public_armored_key", out var serverKey) && serverKey.GetString() is { } armored)
@@ -62,7 +63,7 @@ public static class AccountKit
             return ExtractCleartext(decoded);
         if (decoded.StartsWith("-----BEGIN PGP", StringComparison.Ordinal))
             return ExtractLiteralData(decoded);
-        throw new FormatException("Unrecognised account kit format.");
+        throw new FormatException(Tr("Unrecognised account kit format."));
     }
 
     private static string ExtractCleartext(string signed)
@@ -71,7 +72,7 @@ public static class AccountKit
         var start = Array.IndexOf(lines, "") + 1; // body starts after the armor headers
         var end = Array.FindIndex(lines, l => l.StartsWith("-----BEGIN PGP SIGNATURE-----", StringComparison.Ordinal));
         if (start <= 0 || end < start)
-            throw new FormatException("Malformed cleartext-signed account kit.");
+            throw new FormatException(Tr("Malformed cleartext-signed account kit."));
         return string.Join('\n', lines[start..end].Select(l => l.StartsWith("- ", StringComparison.Ordinal) ? l[2..] : l));
     }
 
@@ -94,6 +95,6 @@ public static class AccountKit
                 return reader.ReadToEnd();
             }
         }
-        throw new FormatException("Account kit signed message contains no data.");
+        throw new FormatException(Tr("Account kit signed message contains no data."));
     }
 }

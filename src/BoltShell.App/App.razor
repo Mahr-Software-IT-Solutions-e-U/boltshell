@@ -78,6 +78,7 @@
     };
 
     private DotNetObjectReference<WindowService>? _windowRef;
+    private string? _appliedLanguage;
 
     protected override void OnInitialized()
     {
@@ -90,6 +91,11 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (_appliedLanguage != CurrentLanguage)
+        {
+            _appliedLanguage = CurrentLanguage;
+            await JS.InvokeVoidAsync("pbsshLanguage", CurrentLanguage, Tr("An unexpected error has occurred."), Tr("Reload"));
+        }
         if (firstRender && Window.Frameless)
         {
             _windowRef = DotNetObjectReference.Create(Window);

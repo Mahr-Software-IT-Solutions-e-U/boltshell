@@ -1,3 +1,5 @@
+using static BoltShell.Core.Localization.Texts;
+
 namespace BoltShell.Core.Passbolt;
 
 /// <summary>Everything needed to log in, except the passphrase. Safe to persist (the key is passphrase-protected).</summary>
@@ -18,9 +20,9 @@ public sealed record PassboltAccount(
     public static Uri ValidateServerUrl(string? url)
     {
         if (!Uri.TryCreate(url?.Trim(), UriKind.Absolute, out var uri) || uri.Scheme is not ("https" or "http") || string.IsNullOrEmpty(uri.Host))
-            throw new ArgumentException($"„{url}“ ist keine gültige Passbolt-Adresse (https://…).");
+            throw new ArgumentException(Tr("'{0}' is not a valid Passbolt address (https://…).", url));
         if (uri.Scheme == Uri.UriSchemeHttp && !uri.IsLoopback)
-            throw new ArgumentException($"Passbolt muss per HTTPS erreichbar sein; „{uri.Host}“ wurde mit http:// angegeben.");
+            throw new ArgumentException(Tr("Passbolt must be reachable via HTTPS; '{0}' was given with http://.", uri.Host));
         return uri;
     }
 }

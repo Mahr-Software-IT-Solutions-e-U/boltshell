@@ -1,8 +1,10 @@
+using static BoltShell.Core.Localization.Texts;
+
 namespace BoltShell.Core.Transfer;
 
 /// <summary>A remote file name that must not be used as a local file name (e.g. <c>..\outside.txt</c>).</summary>
 public sealed class UnsafeRemoteNameException(string name, string reason)
-    : IOException($"„{name}“ wurde nicht übertragen: {reason}")
+    : IOException(Tr("'{0}' was not transferred: {1}", name, reason))
 {
     public string RemoteName { get; } = name;
 }
@@ -26,18 +28,18 @@ public static class LocalPaths
     public static string? Problem(string? name)
     {
         if (string.IsNullOrEmpty(name))
-            return "leerer Name";
+            return Tr("empty name");
         if (name is "." or "..")
-            return "verweist auf einen anderen Ordner";
+            return Tr("refers to another folder");
         if (name.IndexOfAny(Forbidden) >= 0)
-            return "enthält Pfadtrenner oder unter Windows unzulässige Zeichen";
+            return Tr("contains path separators or characters not allowed on Windows");
         if (name.Any(c => c < 0x20))
-            return "enthält Steuerzeichen";
+            return Tr("contains control characters");
         if (name.EndsWith('.') || name.EndsWith(' '))
-            return "endet mit Punkt oder Leerzeichen (unter Windows nicht eindeutig)";
+            return Tr("ends with a dot or space (ambiguous on Windows)");
         var stem = name.Split('.')[0].TrimEnd(' ');
         if (ReservedWindowsNames.Contains(stem))
-            return "ist unter Windows ein reservierter Gerätename";
+            return Tr("is a reserved device name on Windows");
         return null;
     }
 
@@ -56,7 +58,7 @@ public static class LocalPaths
         var comparison = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         if (!full.StartsWith(root + Path.DirectorySeparatorChar, comparison) || Path.GetDirectoryName(full) is not { } parent
             || !string.Equals(Path.TrimEndingDirectorySeparator(parent), root, comparison))
-            throw new UnsafeRemoteNameException(name, "würde außerhalb des Zielordners landen");
+            throw new UnsafeRemoteNameException(name, Tr("would end up outside the target folder"));
         return full;
     }
 
@@ -65,6 +67,6 @@ public static class LocalPaths
     {
         FileSystemInfo info = Directory.Exists(path) ? new DirectoryInfo(path) : new FileInfo(path);
         if (info.Exists && (info.LinkTarget is not null || info.Attributes.HasFlag(FileAttributes.ReparsePoint)))
-            throw new UnsafeRemoteNameException(name, "am Ziel liegt eine Verknüpfung (Symlink/Reparse Point), durch die nicht geschrieben wird");
+            throw new UnsafeRemoteNameException(name, Tr("the target is a link (symlink/reparse point), which is not written through"));
     }
 }

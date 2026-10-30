@@ -1,0 +1,19 @@
+{
+  "Hosts by Passbolt account": "Hosts nach Passbolt-Konto",
+  "Hosts": "Hosts",
+  "Filter: {0}": "Filter: {0}",
+  "Add host": "Host hinzufügen",
+  "Provision SSH host": "SSH-Host provisionieren",
+  "Connect with a password, set up a key": "Mit Passwort verbinden, Schlüssel einrichten",
+  "Create RDP host": "RDP-Host anlegen",
+  "Save Windows credentials in Passbolt": "Windows-Zugang in Passbolt speichern",
+  "Sync {0}": "{0} synchronisieren",
+  "Sync": "Synchronisieren",
+  "Locked": "Gesperrt",
+  "Unlock to load hosts": "Entsperren, um Hosts zu laden",
+  "No resources with ssh:// or rdp://.": "Keine Ressourcen mit ssh:// oder rdp://.",
+  "No matches.": "Keine Treffer.",
+  "Host identity stored in Passbolt": "Host-Identität in Passbolt hinterlegt",
+  "Hosts are Passbolt resources with a URI": "Hosts sind Passbolt-Ressourcen mit einer URI",
+  "or": "oder"
+}

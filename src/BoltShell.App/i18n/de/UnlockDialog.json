@@ -1,0 +1,11 @@
+{
+  "One-time code (TOTP)": "Einmalcode (TOTP)",
+  "Passphrase of the Passbolt key": "Passphrase des Passbolt-Schlüssels",
+  "Cancel": "Abbrechen",
+  "Please wait…": "Bitte warten…",
+  "Confirm": "Bestätigen",
+  "Unlock": "Entsperren",
+  "Wrong passphrase.": "Falsche Passphrase.",
+  "Server unreachable: {0}": "Server nicht erreichbar: {0}",
+  "Unlock {0}": "{0} entsperren"
+}

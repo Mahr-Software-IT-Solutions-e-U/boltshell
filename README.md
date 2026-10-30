@@ -21,13 +21,13 @@ Secrets are decrypted locally, only when a connection is opened.
 - Quick connect (Ctrl+K): search hosts or connect directly to `user@host:port`
 - Passbolt login via JWT + OpenPGP, Passbolt v4 and v5 (encrypted metadata, shared metadata keys, custom fields), TOTP
 - Password, keyboard-interactive and private-key authentication (incl. encrypted keys)
-- Host identity from Passbolt (`ssh_host_key`), otherwise trust-on-first-use with a warning on changed keys
+- Host identity from Passbolt (`ssh_host_key`, `rdp_cert_sha256`), otherwise trust-on-first-use with a warning on changed keys; sessions without a stored identity show a notice with a button to store it in Passbolt, a mismatch with Passbolt is refused and shown prominently (expected vs. presented fingerprint, replace only after explicit confirmation)
 - SFTP upload/download (files, folders, drag & drop) with progress and cancel; symlinked folders can be opened; SCP fallback for servers without SFTP
 - Host provisioning: turn a password-only host into a key-based Passbolt host (see below)
 - RDP in tabs (IronRDP web client, NLA/CredSSP) with credentials from Passbolt; create RDP hosts incl. pinned server certificate
 - Automatic updates from GitHub Releases
 - Frameless window with the app's own title bar (set `"NativeTitleBar": true` in settings.json for the OS title bar)
-- German UI
+- English and German UI (follows the OS language, switchable on the accounts page)
 
 ## Passbolt resource convention
 
@@ -139,6 +139,10 @@ The version comes from `<Version>` in `src/BoltShell.App/BoltShell.App.csproj`; 
 | `src/BoltShell.Core` | Passbolt client, OpenPGP, SSH/SFTP sessions, settings (no UI) |
 | `src/BoltShell.App` | Photino.Blazor desktop host, Razor components (xterm.js; MudBlazor for dialogs) |
 | `tests/BoltShell.Core.Tests` | Unit tests incl. a fake Passbolt server with real PGP, SSH integration tests |
+
+Translations: user-facing texts are written in English and wrapped in `Tr("…")` (`BoltShell.Core.Localization.Texts`);
+German translations live in `i18n/de/*.json` next to the code (one catalog per component). `LocalizationTests` fail on
+missing or stale translations and on mismatched placeholders. A new language = a new `i18n/<code>/` folder plus an entry in `Texts.Languages`.
 
 ## License
 

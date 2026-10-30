@@ -4,13 +4,13 @@
             <span class="acc-url">@Account.Config.Account.BaseUrl</span>
             @if (Account.MfaPending)
             {
-                <label class="field">Einmalcode (TOTP)
+                <label class="field">@Tr("One-time code (TOTP)")
                     <input class="input mono" @bind="_totp" @bind:event="oninput" inputmode="numeric" autocomplete="one-time-code" maxlength="6" autofocus disabled="@_busy" />
                 </label>
             }
             else
             {
-                <label class="field">Passphrase des Passbolt-Schlüssels
+                <label class="field">@Tr("Passphrase of the Passbolt key")
                     <input class="input" type="password" @bind="_passphrase" @bind:event="oninput" autofocus disabled="@_busy" />
                 </label>
             }
@@ -19,9 +19,9 @@
                 <span class="error-text" role="alert">@_error</span>
             }
             <div style="display:flex; justify-content:flex-end; gap:8px">
-                <button type="button" class="btn" @onclick="() => MudDialog.Cancel()" disabled="@_busy">Abbrechen</button>
+                <button type="button" class="btn" @onclick="() => MudDialog.Cancel()" disabled="@_busy">@Tr("Cancel")</button>
                 <button type="submit" class="btn btn-primary" disabled="@_busy">
-                    @(_busy ? "Bitte warten…" : Account.MfaPending ? "Bestätigen" : "Entsperren")
+                    @(_busy ? Tr("Please wait…") : Account.MfaPending ? Tr("Confirm") : Tr("Unlock"))
                 </button>
             </div>
         </form>
@@ -69,11 +69,11 @@
         }
         catch (Org.BouncyCastle.Bcpg.OpenPgp.PgpException)
         {
-            return "Falsche Passphrase.";
+            return Tr("Wrong passphrase.");
         }
         catch (HttpRequestException ex)
         {
-            return "Server nicht erreichbar: " + ex.Message;
+            return Tr("Server unreachable: {0}", ex.Message);
         }
         catch (Exception ex)
         {
@@ -86,7 +86,7 @@
     {
         if (account.IsUnlocked)
             return true;
-        var dialog = await dialogs.ShowAsync<UnlockDialog>($"{account.Config.DisplayName} entsperren",
+        var dialog = await dialogs.ShowAsync<UnlockDialog>(Tr("Unlock {0}", account.Config.DisplayName),
             new DialogParameters<UnlockDialog> { { d => d.Account, account } },
             new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true });
         var result = await dialog.Result;

@@ -1,0 +1,14 @@
+{
+  "The host key of": "Der Host-Key von",
+  "has changed since the last connection. Someone could be intercepting the connection (man-in-the-middle), or the server was reinstalled. Only continue if you have verified the new fingerprint.": "hat sich seit der letzten Verbindung geändert. Jemand könnte die Verbindung abfangen (Man-in-the-Middle), oder der Server wurde neu installiert. Nur fortfahren, wenn du den neuen Fingerprint geprüft hast.",
+  "Previously trusted:": "Bisher vertraut:",
+  "The authenticity of": "Die Echtheit von",
+  "has not been confirmed yet.": "ist noch nicht bestätigt.",
+  "Presented key ({0}):": "Vorgelegter Schlüssel ({0}):",
+  "TLS certificate": "TLS-Zertifikat",
+  "Tip: store the fingerprint in Passbolt in the field": "Tipp: Hinterlege den Fingerprint in Passbolt im Feld",
+  ", and this prompt will no longer appear for the whole team.": ", dann entfällt diese Abfrage für das ganze Team.",
+  "Cancel": "Abbrechen",
+  "Replace key & connect": "Schlüssel ersetzen & verbinden",
+  "Trust & connect": "Vertrauen & verbinden"
+}

@@ -1,4 +1,5 @@
 using Org.BouncyCastle.Bcpg.OpenPgp;
+using static BoltShell.Core.Localization.Texts;
 
 namespace BoltShell.Core.Crypto;
 
@@ -17,7 +18,7 @@ public sealed class PgpPublicKeys
     /// </summary>
     public PgpPublicKey EncryptionKey =>
         PgpKeyValidation.UsableKeys(Ring, PgpKeyUsage.Encrypt).FirstOrDefault()
-        ?? throw new PgpException("Public key has no valid encryption key.");
+        ?? throw new PgpException(Tr("Public key has no valid encryption key."));
 
     /// <summary>The key with <paramref name="keyId"/> if it may sign for this certificate (primary or properly bound signing subkey).</summary>
     public PgpPublicKey? FindKey(long keyId) =>
@@ -31,7 +32,7 @@ public sealed class PgpPublicKeys
         {
             PgpPublicKeyRing ring => new PgpPublicKeys(ring),
             PgpSecretKeyRing secret => new PgpPublicKeys(ToPublicRing(secret)),
-            var other => throw new PgpException($"Expected a public key, got {other?.GetType().Name ?? "nothing"}."),
+            var other => throw new PgpException(Tr("Expected a public key, got {0}.", other?.GetType().Name ?? "nothing")),
         };
     }
 
@@ -78,7 +79,7 @@ public sealed class PgpKeyChain
 
         var signing = ring.GetSecretKeys().FirstOrDefault(k => k.IsSigningKey && k.IsMasterKey)
                       ?? ring.GetSecretKeys().FirstOrDefault(k => k.IsSigningKey)
-                      ?? throw new PgpException("Private key has no signing key.");
+                      ?? throw new PgpException(Tr("Private key has no signing key."));
 
         var chain = new PgpKeyChain(ring, unlocked[signing.KeyId], signing.PublicKey);
         foreach (var (id, key) in unlocked)
@@ -108,7 +109,7 @@ public sealed class PgpKeyChain
     {
         using var input = PgpUtilities.GetDecoderStream(new MemoryStream(System.Text.Encoding.ASCII.GetBytes(armored)));
         return new PgpObjectFactory(input).NextPgpObject() as PgpSecretKeyRing
-               ?? throw new PgpException("Expected an OpenPGP private key block.");
+               ?? throw new PgpException(Tr("Expected an OpenPGP private key block."));
     }
 
     private static Dictionary<long, PgpPrivateKey> UnlockRing(PgpSecretKeyRing ring, string passphrase)
@@ -128,6 +129,6 @@ public sealed class PgpKeyChain
         {
             Array.Clear(chars);
         }
-        return result.Count > 0 ? result : throw new PgpException("Private key contains no usable secret keys.");
+        return result.Count > 0 ? result : throw new PgpException(Tr("Private key contains no usable secret keys."));
     }
 }

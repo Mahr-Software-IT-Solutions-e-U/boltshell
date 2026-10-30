@@ -13,8 +13,9 @@ function ensureInit() {
 
 function describeError(e) {
     if (e && typeof e.kind === "function") {
-        const kinds = ["Allgemeiner Fehler", "Falsches Passwort", "Anmeldung fehlgeschlagen", "Zugriff verweigert",
-            "Proxy-Fehler", "Verbindung zum Proxy fehlgeschlagen", "Aushandlung fehlgeschlagen"];
+        // Shown only as a fallback; RdpTab translates known kinds itself.
+        const kinds = ["General error", "Wrong password", "Logon failure", "Access denied",
+            "Proxy error", "Proxy connection failed", "Negotiation failed"];
         const kind = e.kind();
         let detail = "";
         try { detail = e.backtrace().split("\n")[0]; } catch { }
@@ -23,7 +24,7 @@ function describeError(e) {
             const d = e.rdcleanpathDetails?.();
             if (d) rdcleanpath = { http: d.httpStatusCode ?? null, wsa: d.wsaErrorCode ?? null, tls: d.tlsAlertCode ?? null };
         } catch { }
-        return { kind, message: kinds[kind] ?? "Fehler", detail, rdcleanpath };
+        return { kind, message: kinds[kind] ?? "Error", detail, rdcleanpath };
     }
     return { kind: -1, message: String(e?.message ?? e), detail: "", rdcleanpath: null };
 }

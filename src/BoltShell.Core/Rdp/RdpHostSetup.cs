@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using BoltShell.Core.Passbolt;
+using static BoltShell.Core.Localization.Texts;
 
 namespace BoltShell.Core.Rdp;
 
@@ -55,11 +56,11 @@ public static class RdpProbe
         var header = new byte[4];
         await stream.ReadExactlyAsync(header, ct);
         if (header[0] != 3)
-            throw new InvalidDataException("Der Server antwortet nicht wie ein RDP-Server.");
+            throw new InvalidDataException(Tr("The server does not respond like an RDP server."));
         var confirm = new byte[BinaryPrimitives.ReadUInt16BigEndian(header.AsSpan(2)) - 4];
         await stream.ReadExactlyAsync(confirm, ct);
         if (RdpProxy.X224NegotiationFailure([.. header, .. confirm]) is { } failure)
-            throw new InvalidOperationException($"Der Server bietet kein TLS/NLA an (RDP_NEG_FAILURE {failure}).");
+            throw new InvalidOperationException(Tr("The server does not offer TLS/NLA (RDP_NEG_FAILURE {0}).", failure));
 
         X509Certificate2? certificate = null;
         await using var tls = new SslStream(stream, leaveInnerStreamOpen: false);
@@ -76,7 +77,7 @@ public static class RdpProbe
         }, ct);
 
         if (certificate is null)
-            throw new InvalidOperationException("Der Server hat kein Zertifikat gesendet.");
+            throw new InvalidOperationException(Tr("The server did not send a certificate."));
         var hash = SHA256.HashData(certificate.RawData);
         return new RdpServerCertificate(
             certificate.Subject,

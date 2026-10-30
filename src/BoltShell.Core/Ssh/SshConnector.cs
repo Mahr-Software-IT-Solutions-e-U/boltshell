@@ -3,12 +3,13 @@ using System.Text;
 using Microsoft.Extensions.Logging;
 using Renci.SshNet;
 using Renci.SshNet.Common;
+using static BoltShell.Core.Localization.Texts;
 
 namespace BoltShell.Core.Ssh;
 
 /// <summary>The private key is encrypted and no (or a wrong) passphrase was supplied.</summary>
 public sealed class KeyPassphraseRequiredException(bool wrongPassphrase, Exception? inner = null)
-    : Exception(wrongPassphrase ? "The passphrase for the SSH private key is wrong." : "The SSH private key needs a passphrase.", inner)
+    : Exception(wrongPassphrase ? Tr("The passphrase for the SSH private key is wrong.") : Tr("The SSH private key needs a passphrase."), inner)
 {
     public bool WrongPassphrase { get; } = wrongPassphrase;
 }
@@ -93,9 +94,8 @@ public sealed class SshConnector(KnownHostsStore knownHosts, ILogger<SshConnecto
             logger.LogWarning("Host key for {Host} does not match Passbolt: {Algorithm} SHA256:{Fingerprint}",
                 presented.HostKeyId, presented.Algorithm, fingerprint);
             _rejections.AddOrUpdate(client, new HostKeyRejectedException(presented,
-                $"The host key of {spec.Target.HostAndPort} (SHA256:{fingerprint}) does not match the host identity " +
-                $"stored in Passbolt ({SshConnectionMapper.HostKeyField}). Connection refused to protect against " +
-                "man-in-the-middle attacks. If the server was reinstalled, update the resource in Passbolt.",
+                Tr("The host key of {0} (SHA256:{1}) does not match the host identity stored in Passbolt ({2}). Connection refused to protect against man-in-the-middle attacks. If the server was reinstalled, update the resource in Passbolt.",
+                    spec.Target.HostAndPort, fingerprint, SshConnectionMapper.HostKeyField),
                 pinnedInPassbolt: true, expected: spec.HostKeys!.Select(k => k.FingerprintSha256).ToList()));
             return false;
         }
@@ -111,7 +111,7 @@ public sealed class SshConnector(KnownHostsStore knownHosts, ILogger<SshConnecto
         if (accepted)
             knownHosts.Trust(info);
         else
-            _rejections.AddOrUpdate(client, new HostKeyRejectedException(info, $"The host key of {spec.Target.HostAndPort} was not accepted."));
+            _rejections.AddOrUpdate(client, new HostKeyRejectedException(info, Tr("The host key of {0} was not accepted.", spec.Target.HostAndPort)));
         return accepted;
     }
 
@@ -141,7 +141,7 @@ public sealed class SshConnector(KnownHostsStore knownHosts, ILogger<SshConnecto
         }
 
         if (methods.Count == 0)
-            throw new InvalidOperationException($"No password or private key available for '{spec.DisplayName}'.");
+            throw new InvalidOperationException(Tr("No password or private key available for '{0}'.", spec.DisplayName));
 
         return new ConnectionInfo(spec.Target.Host, spec.Target.Port, user, methods.ToArray())
         {

@@ -161,3 +161,12 @@ window.pbsshMenu = {
         return [r.right, r.bottom];
     }
 };
+
+// Language of the static page parts (index.html), set by App.razor whenever the UI language changes.
+window.pbsshLanguage = (lang, errorText, reloadText) => {
+    document.documentElement.lang = lang;
+    const message = document.querySelector("#blazor-error-ui .error-text-message");
+    if (message) message.textContent = errorText;
+    const reload = document.querySelector("#blazor-error-ui .reload");
+    if (reload) reload.textContent = reloadText;
+};

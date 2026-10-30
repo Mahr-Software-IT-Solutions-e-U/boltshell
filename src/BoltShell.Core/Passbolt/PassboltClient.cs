@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Org.BouncyCastle.Bcpg.OpenPgp;
 using BoltShell.Core.Crypto;
+using static BoltShell.Core.Localization.Texts;
 
 namespace BoltShell.Core.Passbolt;
 
@@ -58,13 +59,13 @@ public sealed class PassboltClient : IDisposable
 
         var verify = await SendAsync(HttpMethod.Get, "auth/verify.json", null, authenticated: false, ct);
         _serverKey = PgpPublicKeys.Parse(verify["keydata"]?.GetValue<string>()
-                                         ?? throw new PassboltApiException("Server did not return its public key."));
+                                         ?? throw new PassboltApiException(Tr("Server did not return its public key.")));
         if (_account.ServerFingerprint is { } expected
             && !string.Equals(expected, _serverKey.Fingerprint, StringComparison.OrdinalIgnoreCase))
         {
             throw new PassboltApiException(
-                $"Server key fingerprint {_serverKey.Fingerprint} does not match the expected {expected}. " +
-                "The server may have been replaced or compromised.");
+                Tr("Server key fingerprint {0} does not match the expected {1}. The server may have been replaced or compromised.",
+                    _serverKey.Fingerprint, expected));
         }
 
         var verifyToken = Guid.NewGuid().ToString();
@@ -81,16 +82,16 @@ public sealed class PassboltClient : IDisposable
             new JsonObject { ["user_id"] = _account.UserId, ["challenge"] = encrypted }, authenticated: false, ct);
 
         var response = JsonNode.Parse(PgpMessage.Decrypt(
-            login["challenge"]?.GetValue<string>() ?? throw new PassboltApiException("Login response has no challenge."),
+            login["challenge"]?.GetValue<string>() ?? throw new PassboltApiException(Tr("Login response has no challenge.")),
             _keys, verifyWith: _serverKey))!;
 
         if (response["verify_token"]?.GetValue<string>() != verifyToken)
-            throw new PassboltApiException("Server returned an invalid verify token.");
+            throw new PassboltApiException(Tr("Server returned an invalid verify token."));
 
         _accessToken = response["access_token"]?.GetValue<string>();
         _refreshToken = response["refresh_token"]?.GetValue<string>();
         if (_accessToken is null)
-            throw new PassboltApiException("Server did not return an access token.");
+            throw new PassboltApiException(Tr("Server did not return an access token."));
 
         var mfa = login["mfa_providers"]?.AsArray().Select(n => n!.GetValue<string>()).ToList() ?? [];
         _logger.LogInformation("Logged in to {Server} (MFA providers: {Mfa})", _account.BaseUrl, string.Join(",", mfa));
@@ -132,7 +133,7 @@ public sealed class PassboltClient : IDisposable
         return body.AsArray()
             .Select(f => new PassboltFolder(
                 f!["id"]!.GetValue<string>(),
-                f["name"]?.GetValue<string>() ?? "(unnamed)",
+                f["name"]?.GetValue<string>() ?? Tr("(unnamed)"),
                 f["folder_parent_id"]?.GetValue<string>()))
             .ToList();
     }
@@ -167,7 +168,7 @@ public sealed class PassboltClient : IDisposable
         var keys = RequireKeys();
         var body = await SendAsync(HttpMethod.Get, $"secrets/resource/{Uri.EscapeDataString(resource.Id)}.json", null, authenticated: true, ct);
         var plaintext = PgpMessage.Decrypt(body["data"]?.GetValue<string>()
-                                           ?? throw new PassboltApiException("Secret has no data."), keys);
+                                           ?? throw new PassboltApiException(Tr("Secret has no data.")), keys);
         var slug = resource.ResourceTypeId is { } typeId ? _resourceTypeSlugs.GetValueOrDefault(typeId) : null;
         return ParseSecret(plaintext, slug);
     }
@@ -251,12 +252,12 @@ public sealed class PassboltClient : IDisposable
         }
         else
         {
-            throw new PassboltApiException("The server offers no supported resource type (v5-default or password-and-description).");
+            throw new PassboltApiException(Tr("The server offers no supported resource type (v5-default or password-and-description)."));
         }
 
         body["secrets"] = new JsonArray(new JsonObject { ["data"] = PgpMessage.EncryptAndSign(secretPlaintext, ownPublicKey, keys) });
         var created = await SendAsync(HttpMethod.Post, "resources.json", body, authenticated: true, ct);
-        var id = created["id"]?.GetValue<string>() ?? throw new PassboltApiException("Server did not return the new resource id.");
+        var id = created["id"]?.GetValue<string>() ?? throw new PassboltApiException(Tr("Server did not return the new resource id."));
 
         string? warning = null;
         if (resource.FolderId is { } folderId)
@@ -268,7 +269,7 @@ public sealed class PassboltClient : IDisposable
             catch (Exception ex) when (ex is PassboltApiException or PgpException or HttpRequestException or InvalidOperationException)
             {
                 _logger.LogWarning(ex, "Sharing resource {Id} like folder {Folder} failed", id, folderId);
-                warning = "Die Ressource wurde angelegt, aber die Freigaben des Ordners konnten nicht übernommen werden: " + ex.Message;
+                warning = Tr("The resource was created, but the folder's permissions could not be applied: {0}", ex.Message);
             }
         }
         return (id, warning);
@@ -287,23 +288,23 @@ public sealed class PassboltClient : IDisposable
         var escapedId = Uri.EscapeDataString(resourceId);
         var item = await SendAsync(HttpMethod.Get, $"resources/{escapedId}.json", null, authenticated: true, ct);
         if (item["metadata"]?.GetValue<string>() is not { } armoredMetadata)
-            throw new PassboltApiException("This is a Passbolt v4 resource; custom fields need a v5 resource. Migrate it in Passbolt or add the field there.");
+            throw new PassboltApiException(Tr("This is a Passbolt v4 resource; custom fields need a v5 resource. Migrate it in Passbolt or add the field there."));
         var metadataKeyId = item["metadata_key_id"]?.GetValue<string>();
         var metadataKeyType = item["metadata_key_type"]?.GetValue<string>() ?? "user_key";
         var typeId = item["resource_type_id"]?.GetValue<string>();
 
         var metadata = JsonNode.Parse(PgpMessage.Decrypt(armoredMetadata, keys))!.AsObject();
         var secretBody = await SendAsync(HttpMethod.Get, $"secrets/resource/{escapedId}.json", null, authenticated: true, ct);
-        var secretPlaintext = PgpMessage.Decrypt(secretBody["data"]?.GetValue<string>() ?? throw new PassboltApiException("Secret has no data."), keys);
+        var secretPlaintext = PgpMessage.Decrypt(secretBody["data"]?.GetValue<string>() ?? throw new PassboltApiException(Tr("Secret has no data.")), keys);
         if (JsonNode.Parse(secretPlaintext) is not JsonObject secret)
-            throw new PassboltApiException("The resource's secret is not a v5 secret object.");
+            throw new PassboltApiException(Tr("The resource's secret is not a v5 secret object."));
 
         ApplyCustomField(metadata, secret, key, value);
 
         PgpPublicKeys metadataRecipient;
         if (metadataKeyType == "shared_key")
             metadataRecipient = metadataKeyId is not null && _metadataPublicKeys.TryGetValue(metadataKeyId, out var shared) ? shared
-                : throw new PassboltApiException("The shared metadata key of this resource is not available.");
+                : throw new PassboltApiException(Tr("The shared metadata key of this resource is not available."));
         else
             metadataRecipient = keys.PublicKeys;
 
@@ -316,12 +317,12 @@ public sealed class PassboltClient : IDisposable
             var userId = user?["id"]?.GetValue<string>();
             var armored = user?["gpgkey"]?["armored_key"]?.GetValue<string>();
             if (userId is null || armored is null)
-                throw new PassboltApiException($"User {userId} has no public key.");
+                throw new PassboltApiException(Tr("User {0} has no public key.", userId));
             var recipient = userId == _account.UserId ? keys.PublicKeys : PgpPublicKeys.Parse(armored);
             secrets.Add(new JsonObject { ["user_id"] = userId, ["data"] = PgpMessage.EncryptAndSign(newSecret, recipient, keys) });
         }
         if (secrets.Count == 0)
-            throw new PassboltApiException("Could not determine who has access to the resource.");
+            throw new PassboltApiException(Tr("Could not determine who has access to the resource."));
 
         var body = new JsonObject
         {
@@ -394,7 +395,7 @@ public sealed class PassboltClient : IDisposable
         {
             var user = await SendAsync(HttpMethod.Get, $"users/{Uri.EscapeDataString(userId)}.json?contain[gpgkey]=1", null, authenticated: true, ct);
             var armored = user["gpgkey"]?["armored_key"]?.GetValue<string>()
-                          ?? throw new PassboltApiException($"User {userId} has no public key.");
+                          ?? throw new PassboltApiException(Tr("User {0} has no public key.", userId));
             secrets.Add(new JsonObject { ["user_id"] = userId, ["data"] = PgpMessage.EncryptAndSign(secretPlaintext, PgpPublicKeys.Parse(armored), keys) });
         }
 
@@ -405,7 +406,7 @@ public sealed class PassboltClient : IDisposable
     private async Task<string> GetOwnGpgKeyIdAsync(CancellationToken ct)
     {
         var me = await SendAsync(HttpMethod.Get, "users/me.json?contain[gpgkey]=1", null, authenticated: true, ct);
-        return me["gpgkey"]?["id"]?.GetValue<string>() ?? throw new PassboltApiException("Could not determine the user's key id.");
+        return me["gpgkey"]?["id"]?.GetValue<string>() ?? throw new PassboltApiException(Tr("Could not determine the user's key id."));
     }
 
     internal static PassboltSecret ParseSecret(string plaintext, string? resourceTypeSlug)
@@ -473,7 +474,7 @@ public sealed class PassboltClient : IDisposable
 
         return new PassboltResource(
             id,
-            source["name"]?.GetValue<string>() ?? "(unnamed)",
+            source["name"]?.GetValue<string>() ?? Tr("(unnamed)"),
             source["username"]?.GetValue<string>(),
             uris,
             source["description"]?.GetValue<string>(),
@@ -539,7 +540,7 @@ public sealed class PassboltClient : IDisposable
     }
 
     private PgpKeyChain RequireKeys() =>
-        _keys is not null && _accessToken is not null ? _keys : throw new InvalidOperationException("Not logged in.");
+        _keys is not null && _accessToken is not null ? _keys : throw new InvalidOperationException(Tr("Not logged in."));
 
     private async Task<JsonNode> SendAsync(HttpMethod method, string path, JsonNode? payload, bool authenticated, CancellationToken ct)
     {
@@ -567,10 +568,10 @@ public sealed class PassboltClient : IDisposable
 
             if (!response.IsSuccessStatusCode)
             {
-                var message = envelope?["header"]?["message"]?.GetValue<string>() ?? response.ReasonPhrase ?? "Request failed";
+                var message = envelope?["header"]?["message"]?.GetValue<string>() ?? response.ReasonPhrase ?? Tr("Request failed");
                 throw new PassboltApiException($"{method} {path}: {message}", (int)response.StatusCode);
             }
-            return envelope?["body"] ?? throw new PassboltApiException($"{method} {path}: empty response");
+            return envelope?["body"] ?? throw new PassboltApiException(Tr("{0} {1}: empty response", method, path));
         }
     }
 

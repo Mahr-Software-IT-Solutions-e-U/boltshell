@@ -1,0 +1,14 @@
+{
+  "Public key has no valid encryption key.": "Der öffentliche Schlüssel hat keinen gültigen Verschlüsselungsschlüssel.",
+  "Expected a public key, got {0}.": "Öffentlicher Schlüssel erwartet, erhalten: {0}.",
+  "Private key has no signing key.": "Der private Schlüssel hat keinen Signaturschlüssel.",
+  "Expected an OpenPGP private key block.": "Ein privater OpenPGP-Schlüsselblock wurde erwartet.",
+  "Private key contains no usable secret keys.": "Der private Schlüssel enthält keine verwendbaren geheimen Schlüssel.",
+  "Not an encrypted OpenPGP message.": "Keine verschlüsselte OpenPGP-Nachricht.",
+  "Message is not encrypted for any available key.": "Die Nachricht ist für keinen verfügbaren Schlüssel verschlüsselt.",
+  "Unexpected OpenPGP packet {0}.": "Unerwartetes OpenPGP-Paket {0}.",
+  "Message is not signed.": "Die Nachricht ist nicht signiert.",
+  "Message was signed by an unexpected key.": "Die Nachricht wurde mit einem unerwarteten Schlüssel signiert.",
+  "Invalid message signature.": "Ungültige Signatur der Nachricht.",
+  "Message integrity check failed.": "Integritätsprüfung der Nachricht fehlgeschlagen."
+}

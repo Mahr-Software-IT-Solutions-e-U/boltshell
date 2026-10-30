@@ -1,0 +1,12 @@
+{
+  "Session ended": "Sitzung beendet",
+  "Connection failed": "Verbindung fehlgeschlagen",
+  "Reconnect": "Neu verbinden",
+  "Connecting": "Verbinde",
+  "The Passbolt account is locked – unlock it to connect.": "Das Passbolt-Konto ist gesperrt – zum Verbinden bitte entsperren.",
+  "Connecting to {0} …": "Verbinde mit {0} …",
+  "SSH key passphrase": "Passphrase des SSH-Schlüssels",
+  "Passphrase": "Passphrase",
+  "The passphrase was wrong. Please try again.": "Die Passphrase war falsch. Bitte erneut versuchen.",
+  "The private key for {0} is encrypted and Passbolt holds no passphrase for it.": "Der private Schlüssel für {0} ist verschlüsselt und in Passbolt ist keine Passphrase hinterlegt."
+}

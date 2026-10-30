@@ -1,0 +1,14 @@
+{
+  "'{0}' was not transferred: {1}": "„{0}“ wurde nicht übertragen: {1}",
+  "empty name": "leerer Name",
+  "refers to another folder": "verweist auf einen anderen Ordner",
+  "contains path separators or characters not allowed on Windows": "enthält Pfadtrenner oder unter Windows unzulässige Zeichen",
+  "contains control characters": "enthält Steuerzeichen",
+  "ends with a dot or space (ambiguous on Windows)": "endet mit Punkt oder Leerzeichen (unter Windows nicht eindeutig)",
+  "is a reserved device name on Windows": "ist unter Windows ein reservierter Gerätename",
+  "would end up outside the target folder": "würde außerhalb des Zielordners landen",
+  "the target is a link (symlink/reparse point), which is not written through": "am Ziel liegt eine Verknüpfung (Symlink/Reparse Point), durch die nicht geschrieben wird",
+  "For security reasons, folders cannot be downloaded via SCP; please select individual files.": "Ordner können über SCP aus Sicherheitsgründen nicht heruntergeladen werden; bitte einzelne Dateien wählen.",
+  "The server does not support SFTP; only SCP transfers by path are available.": "Der Server unterstützt kein SFTP; nur SCP-Übertragungen per Pfad sind möglich.",
+  "Not connected.": "Nicht verbunden."
+}

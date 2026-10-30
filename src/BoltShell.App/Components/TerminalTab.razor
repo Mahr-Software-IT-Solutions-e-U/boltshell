@@ -12,18 +12,18 @@
     {
         <div class="terminal-overlay">
             <div class="overlay-card" role="alert">
-                <h3>@(Session.State == SessionState.Closed ? "Sitzung beendet" : "Verbindung fehlgeschlagen")</h3>
+                <h3>@(Session.State == SessionState.Closed ? Tr("Session ended") : Tr("Connection failed"))</h3>
                 @if (Session.Error is not null)
                 {
                     <p>@Session.Error</p>
                 }
-                <div><button type="button" class="btn btn-primary" @onclick="ConnectAsync"><Icon Name="refresh" Size="14" />Neu verbinden</button></div>
+                <div><button type="button" class="btn btn-primary" @onclick="ConnectAsync"><Icon Name="refresh" Size="14" />@Tr("Reconnect")</button></div>
             </div>
         </div>
     }
     else if (Session.State == SessionState.Connecting)
     {
-        <div class="terminal-overlay" style="background:transparent" aria-label="Verbinde">
+        <div class="terminal-overlay" style="background:transparent" aria-label="@Tr("Connecting")">
             <div class="spinner"></div>
         </div>
     }
@@ -93,7 +93,7 @@
     {
         if (BeforeConnect is not null && !await BeforeConnect())
         {
-            await _terminal.WriteLine("\u001b[33mDas Passbolt-Konto ist gesperrt – zum Verbinden bitte entsperren.\u001b[0m");
+            await _terminal.WriteLine("\u001b[33m" + Tr("The Passbolt account is locked – unlock it to connect.") + "\u001b[0m");
             return;
         }
         while (true)
@@ -104,7 +104,7 @@
                 var rows = await _terminal.GetRows();
                 if (Banner is not null)
                     await _terminal.WriteLine($"\u001b[38;2;242;198;107m▍ {Banner}\u001b[0m");
-                await _terminal.WriteLine($"\u001b[90mVerbinde mit {Session.Spec.Username}@{Session.Spec.Target.HostAndPort} …\u001b[0m");
+                await _terminal.WriteLine("\u001b[90m" + Tr("Connecting to {0} …", $"{Session.Spec.Username}@{Session.Spec.Target.HostAndPort}") + "\u001b[0m");
                 await Session.ConnectAsync(columns, rows, _cts.Token);
                 await JS.InvokeVoidAsync("pbssh.fit", _terminal.Id);
                 Session.Resize(await _terminal.GetColumns(), await _terminal.GetRows());
@@ -113,8 +113,8 @@
             }
             catch (KeyPassphraseRequiredException ex)
             {
-                var passphrase = await TextPromptDialog.ShowAsync(Dialogs, "Passphrase des SSH-Schlüssels", "Passphrase",
-                    ex.WrongPassphrase ? "Die Passphrase war falsch. Bitte erneut versuchen." : $"Der private Schlüssel für {Session.Spec.DisplayName} ist verschlüsselt und in Passbolt ist keine Passphrase hinterlegt.",
+                var passphrase = await TextPromptDialog.ShowAsync(Dialogs, Tr("SSH key passphrase"), Tr("Passphrase"),
+                    ex.WrongPassphrase ? Tr("The passphrase was wrong. Please try again.") : Tr("The private key for {0} is encrypted and Passbolt holds no passphrase for it.", Session.Spec.DisplayName),
                     secret: true);
                 if (passphrase is null)
                     return;

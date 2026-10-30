@@ -3,6 +3,7 @@ using BoltShell.Core.Config;
 using BoltShell.Core.Passbolt;
 using BoltShell.Core.Rdp;
 using BoltShell.Core.Ssh;
+using static BoltShell.Core.Localization.Texts;
 
 namespace BoltShell.Core.Accounts;
 
@@ -157,10 +158,10 @@ public sealed class AccountSession : IDisposable
 
     internal void SetLastActivityForTest(DateTimeOffset value) => LastActivity = value;
 
-    private PassboltClient RequireClient() => _client ?? throw new InvalidOperationException($"Account '{Config.DisplayName}' is locked.");
+    private PassboltClient RequireClient() => _client ?? throw new InvalidOperationException(Tr("Account '{0}' is locked.", Config.DisplayName));
 
     private PassboltClient RequireUnlockedClient() =>
-        IsUnlocked ? _client! : throw new InvalidOperationException($"Account '{Config.DisplayName}' is locked.");
+        IsUnlocked ? _client! : throw new InvalidOperationException(Tr("Account '{0}' is locked.", Config.DisplayName));
 
     public void Dispose() => _client?.Dispose();
 }

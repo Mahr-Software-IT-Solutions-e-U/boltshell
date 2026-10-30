@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using BoltShell.Core.Rdp;
 using BoltShell.Core.Ssh;
 using BoltShell.Core.Transfer;
+using static BoltShell.Core.Localization.Texts;
 
 namespace BoltShell.App.Services;
 
@@ -49,8 +50,10 @@ public sealed partial class SessionTab
     public string? TerminalDirectory { get; private set; }
 
     public string AuthLabel =>
-        IsRdp ? "NLA, Passwort aus Passbolt"
-              : (Spec!.Credentials.HasPrivateKey ? "Public Key" : "Passwort") + (AccountId is null ? " (manuell)" : " aus Passbolt");
+        IsRdp ? Tr("NLA, password from Passbolt")
+              : Spec!.Credentials.HasPrivateKey
+                  ? (AccountId is null ? Tr("Public key (manual)") : Tr("Public key from Passbolt"))
+                  : (AccountId is null ? Tr("Password (manual)") : Tr("Password from Passbolt"));
 
     [GeneratedRegex(@"^[^@\s]+@[^:\s]+:\s*(?<dir>\S.*)$")]
     private static partial Regex ShellTitle();

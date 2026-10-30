@@ -1,0 +1,7 @@
+{
+  "Resource '{0}' has no rdp:// URI.": "Ressource „{0}“ hat keine rdp://-URI.",
+  "Resource '{0}' has no username.": "Ressource „{0}“ hat keinen Benutzernamen.",
+  "The server does not respond like an RDP server.": "Der Server antwortet nicht wie ein RDP-Server.",
+  "The server does not offer TLS/NLA (RDP_NEG_FAILURE {0}).": "Der Server bietet kein TLS/NLA an (RDP_NEG_FAILURE {0}).",
+  "The server did not send a certificate.": "Der Server hat kein Zertifikat gesendet."
+}

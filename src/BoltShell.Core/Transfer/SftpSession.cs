@@ -1,6 +1,7 @@
 using Renci.SshNet;
 using Renci.SshNet.Common;
 using BoltShell.Core.Ssh;
+using static BoltShell.Core.Localization.Texts;
 
 namespace BoltShell.Core.Transfer;
 
@@ -248,7 +249,7 @@ public sealed class SftpSession : IAsyncDisposable
     {
         // SSH.NET's SCP client builds local paths from server-sent names without our checks.
         if (_scp is not null)
-            throw new NotSupportedException("Ordner können über SCP aus Sicherheitsgründen nicht heruntergeladen werden; bitte einzelne Dateien wählen.");
+            throw new NotSupportedException(Tr("For security reasons, folders cannot be downloaded via SCP; please select individual files."));
 
         LocalPaths.EnsureNotLink(localDir, name);
         Directory.CreateDirectory(localDir);
@@ -339,10 +340,10 @@ public sealed class SftpSession : IAsyncDisposable
 
     private SftpClient RequireSftp() =>
         _sftp ?? throw new InvalidOperationException(_scp is not null
-            ? "The server does not support SFTP; only SCP transfers by path are available."
-            : "Not connected.");
+            ? Tr("The server does not support SFTP; only SCP transfers by path are available.")
+            : Tr("Not connected."));
 
-    private ScpClient RequireScp() => _scp ?? throw new InvalidOperationException("Not connected.");
+    private ScpClient RequireScp() => _scp ?? throw new InvalidOperationException(Tr("Not connected."));
 
     public static string CombineRemote(string directory, string name) =>
         directory.EndsWith('/') ? directory + name : directory + "/" + name;

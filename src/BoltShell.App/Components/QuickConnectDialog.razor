@@ -2,7 +2,7 @@
     <DialogContent>
         <form @onsubmit="Submit" @onsubmit:preventDefault style="display:flex; flex-direction:column; gap:14px; padding-top:4px">
             <p class="muted" style="margin:0; font-size:13px; line-height:1.5">
-                Direkte Verbindung ohne Passbolt-Ressource. Das Passwort wird nur für diese Sitzung im Speicher gehalten.
+                @Tr("Direct connection without a Passbolt resource. The password is only kept in memory for this session.")
             </p>
             <div style="display:grid; grid-template-columns: 3fr 1fr; gap:12px">
                 <label class="field">Host
@@ -12,10 +12,10 @@
                     <input class="input mono" type="number" min="1" max="65535" @bind="_port" @bind:event="oninput" />
                 </label>
             </div>
-            <label class="field">Benutzer
+            <label class="field">@Tr("User")
                 <input class="input mono" @bind="_user" @bind:event="oninput" autofocus="@(_user is null)" />
             </label>
-            <label class="field">Passwort
+            <label class="field">@Tr("Password")
                 <input class="input" type="password" @bind="_password" @bind:event="oninput" autofocus="@(_user is not null)" />
             </label>
             @if (_error is not null)
@@ -23,8 +23,8 @@
                 <span class="error-text" role="alert">@_error</span>
             }
             <div style="display:flex; justify-content:flex-end; gap:8px">
-                <button type="button" class="btn" @onclick="() => MudDialog.Cancel()">Abbrechen</button>
-                <button type="submit" class="btn btn-primary">Verbinden</button>
+                <button type="button" class="btn" @onclick="() => MudDialog.Cancel()">@Tr("Cancel")</button>
+                <button type="submit" class="btn btn-primary">@Tr("Connect")</button>
             </div>
         </form>
     </DialogContent>
@@ -51,7 +51,7 @@
     {
         if (string.IsNullOrWhiteSpace(_host) || string.IsNullOrWhiteSpace(_user) || _port is < 1 or > 65535)
         {
-            _error = "Bitte Host, Port und Benutzer angeben.";
+            _error = Tr("Please enter host, port and user.");
             return;
         }
         var target = new SshTarget(_host.Trim(), _port);
@@ -61,7 +61,7 @@
 
     public static async Task<SshConnectionSpec?> ShowAsync(IDialogService dialogs, SshTarget target)
     {
-        var dialog = await dialogs.ShowAsync<QuickConnectDialog>("Schnellverbindung",
+        var dialog = await dialogs.ShowAsync<QuickConnectDialog>(Tr("Quick connect"),
             new DialogParameters<QuickConnectDialog> { { d => d.Target, target } },
             new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true });
         var result = await dialog.Result;

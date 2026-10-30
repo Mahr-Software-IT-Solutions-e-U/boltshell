@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Renci.SshNet;
 using Renci.SshNet.Common;
 using BoltShell.Core.Ssh;
+using static BoltShell.Core.Localization.Texts;
 
 namespace BoltShell.Core.Provisioning;
 
@@ -90,24 +91,24 @@ public sealed class HostProvisioner
         _request = request;
         _steps =
         [
-            new(ProvisionStepKind.Connect, $"Mit {request.LoginUser}@{request.Target.HostAndPort} per Passwort verbinden"),
-            new(ProvisionStepKind.CheckPrivileges, request.LoginUser == "root" ? "Root-Rechte prüfen" : "sudo-Rechte prüfen"),
-            new(ProvisionStepKind.GenerateKey, "Ed25519-Schlüssel erzeugen"),
-            new(ProvisionStepKind.InstallKey, $"Public Key für {request.KeyUser} installieren"),
-            new(ProvisionStepKind.AllowRootKeyLogin, "Root-Login per Schlüssel erlauben"),
-            new(ProvisionStepKind.VerifyKeyLogin, $"Login als {request.KeyUser} per Schlüssel testen"),
-            new(ProvisionStepKind.SaveToPassbolt, "In Passbolt speichern"),
-            new(ProvisionStepKind.DisablePasswordLogin, "Passwort-Login deaktivieren"),
-            new(ProvisionStepKind.VerifyPasswordLogin, "Prüfen: Passwort-Login abgelehnt, Schlüssel funktioniert"),
+            new(ProvisionStepKind.Connect, Tr("Connect to {0}@{1} with password", request.LoginUser, request.Target.HostAndPort)),
+            new(ProvisionStepKind.CheckPrivileges, request.LoginUser == "root" ? Tr("Check root privileges") : Tr("Check sudo privileges")),
+            new(ProvisionStepKind.GenerateKey, Tr("Generate Ed25519 key")),
+            new(ProvisionStepKind.InstallKey, Tr("Install public key for {0}", request.KeyUser)),
+            new(ProvisionStepKind.AllowRootKeyLogin, Tr("Allow root login with key")),
+            new(ProvisionStepKind.VerifyKeyLogin, Tr("Test key login as {0}", request.KeyUser)),
+            new(ProvisionStepKind.SaveToPassbolt, Tr("Save to Passbolt")),
+            new(ProvisionStepKind.DisablePasswordLogin, Tr("Disable password login")),
+            new(ProvisionStepKind.VerifyPasswordLogin, Tr("Verify: password login rejected, key works")),
         ];
         if (!request.KeyForRoot)
-            Skip(ProvisionStepKind.AllowRootKeyLogin, "nicht gewählt");
+            Skip(ProvisionStepKind.AllowRootKeyLogin, Tr("not selected"));
         if (!NeedsPrivileges)
-            Skip(ProvisionStepKind.CheckPrivileges, "nicht nötig");
+            Skip(ProvisionStepKind.CheckPrivileges, Tr("not needed"));
         if (!request.DisablePasswordLogin)
         {
-            Skip(ProvisionStepKind.DisablePasswordLogin, "nicht gewählt");
-            Skip(ProvisionStepKind.VerifyPasswordLogin, "nicht gewählt");
+            Skip(ProvisionStepKind.DisablePasswordLogin, Tr("not selected"));
+            Skip(ProvisionStepKind.VerifyPasswordLogin, Tr("not selected"));
         }
     }
 
@@ -150,11 +151,11 @@ public sealed class HostProvisioner
             }
             catch (SshAuthenticationException ex)
             {
-                throw new ProvisioningException("Anmeldung fehlgeschlagen: Benutzer oder Passwort falsch, oder der Server erlaubt keinen Passwort-Login.", ex);
+                throw new ProvisioningException(Tr("Login failed: wrong user or password, or the server does not allow password login."), ex);
             }
             return null;
         });
-        var hostKeyLine = SshKeyGenerator.HostKeyLine(hostKeyBlob ?? throw new ProvisioningException("Der Server hat keinen Host-Key gesendet."));
+        var hostKeyLine = SshKeyGenerator.HostKeyLine(hostKeyBlob ?? throw new ProvisioningException(Tr("The server did not send a host key.")));
         var hostKeys = SshConnectionMapper.ParseHostKeys(hostKeyLine);
 
         // 2. Root or working sudo is needed for root's authorized_keys and sshd configuration.
@@ -165,9 +166,9 @@ public sealed class HostProvisioner
                 var result = await RunAsync(admin, "id -u", privileged: true, ct);
                 if (result.ExitCode != 0 || result.Output.Trim() != "0")
                     throw new ProvisioningException(RunsAsRoot
-                        ? "Keine Root-Rechte."
-                        : $"{_request.LoginUser} kann sudo nicht nutzen (falsches Passwort, keine Berechtigung oder 'requiretty'). {result.Error.Trim()}");
-                return RunsAsRoot ? "angemeldet als root" : "sudo funktioniert";
+                        ? Tr("No root privileges.")
+                        : Tr("{0} cannot use sudo (wrong password, no permission or 'requiretty'). {1}", _request.LoginUser, result.Error.Trim()));
+                return RunsAsRoot ? Tr("logged in as root") : Tr("sudo works");
             });
         }
 
@@ -199,7 +200,7 @@ public sealed class HostProvisioner
                 {
                     var effective = await EffectiveConfigAsync(admin, "root", ct);
                     if (effective.GetValueOrDefault("permitrootlogin") is "yes" or "prohibit-password" or "without-password")
-                        return $"bereits erlaubt (PermitRootLogin {effective["permitrootlogin"]})";
+                        return Tr("already allowed (PermitRootLogin {0})", effective["permitrootlogin"]);
                     await WriteSshdConfigAsync(admin, ["PermitRootLogin prohibit-password"], ct);
                     configWritten = true;
                     return "PermitRootLogin prohibit-password";
@@ -248,24 +249,24 @@ public sealed class HostProvisioner
                     {
                         // Key login broke after the change: restore immediately via the still-open admin session.
                         await RemoveSshdConfigAsync(admin, ct);
-                        throw new ProvisioningException("Nach dem Deaktivieren funktionierte der Schlüssel-Login nicht mehr – Änderung zurückgenommen. " + ex.Message, ex);
+                        throw new ProvisioningException(Tr("Key login stopped working after disabling password login – change reverted. {0}", ex.Message), ex);
                     }
 
                     var effective = await EffectiveConfigAsync(admin, _request.LoginUser, ct);
                     if (effective.GetValueOrDefault("passwordauthentication") != "no")
                     {
-                        var message = $"sshd meldet weiterhin PasswordAuthentication {effective.GetValueOrDefault("passwordauthentication", "?")} – " +
-                                      "eventuell überschreibt eine frühere Einstellung oder ein Match-Block die Datei.";
+                        var message = Tr("sshd still reports PasswordAuthentication {0} – an earlier setting or a Match block may override the file.",
+                            effective.GetValueOrDefault("passwordauthentication", "?"));
                         warnings.Add(message);
                         throw new ProvisioningException(message);
                     }
                     if (await PasswordLoginWorksAsync(loginSpec, ct))
                     {
-                        const string message = "Ein Login mit Passwort ist weiterhin möglich – bitte die sshd-Konfiguration prüfen.";
+                        var message = Tr("Password login is still possible – please check the sshd configuration.");
                         warnings.Add(message);
                         throw new ProvisioningException(message);
                     }
-                    return "Passwort abgelehnt, Schlüssel funktioniert";
+                    return Tr("password rejected, key works");
                 }, failSoft: true);
             }
 
@@ -301,8 +302,8 @@ public sealed class HostProvisioner
         await ConnectAfterReloadAsync(client, ct);
         var result = await RunAsync(client, "id -un", privileged: false, ct);
         if (result.Output.Trim() != keySpec.Username)
-            throw new ProvisioningException($"Unerwarteter Benutzer nach Schlüssel-Login: '{result.Output.Trim()}'.");
-        return $"angemeldet als {keySpec.Username}";
+            throw new ProvisioningException(Tr("Unexpected user after key login: '{0}'.", result.Output.Trim()));
+        return Tr("logged in as {0}", keySpec.Username);
     }
 
     private async Task<bool> PasswordLoginWorksAsync(SshConnectionSpec loginSpec, CancellationToken ct)
@@ -367,11 +368,11 @@ public sealed class HostProvisioner
             """;
         var result = await RunAsync(admin, script, privileged: true, ct);
         if (result.Output.Contains("PBSSH_NO_INCLUDE"))
-            throw new ProvisioningException($"{SshdConfigPath} bindet {SshdConfigDir}/*.conf nicht ein (Include fehlt). Keine Änderung vorgenommen.");
+            throw new ProvisioningException(Tr("{0} does not include {1}/*.conf (Include missing). No changes made.", SshdConfigPath, SshdConfigDir));
         if (result.Output.Contains("PBSSH_SSHD_TEST_FAILED"))
-            throw new ProvisioningException("sshd -t hat die neue Konfiguration abgelehnt, sie wurde zurückgenommen: " + result.Output.Replace("PBSSH_SSHD_TEST_FAILED", "").Trim());
+            throw new ProvisioningException(Tr("sshd -t rejected the new configuration; it was reverted: {0}", result.Output.Replace("PBSSH_SSHD_TEST_FAILED", "").Trim()));
         if (result.ExitCode != 0)
-            throw new ProvisioningException($"sshd-Konfiguration fehlgeschlagen (Exit {result.ExitCode}): {result.Error.Trim()}");
+            throw new ProvisioningException(Tr("sshd configuration failed (exit {0}): {1}", result.ExitCode, result.Error.Trim()));
     }
 
     private async Task RemoveSshdConfigAsync(SshClient admin, CancellationToken ct) =>
@@ -382,7 +383,7 @@ public sealed class HostProvisioner
     {
         var result = await RunAsync(admin, $"{SshdCommand} -T -C {Quote($"user={user},host=localhost,addr=127.0.0.1")}", privileged: true, ct);
         if (result.ExitCode != 0)
-            throw new ProvisioningException("sshd -T fehlgeschlagen: " + result.Error.Trim());
+            throw new ProvisioningException(Tr("sshd -T failed: {0}", result.Error.Trim()));
         return ParseEffectiveConfig(result.Output);
     }
 
@@ -422,7 +423,7 @@ public sealed class HostProvisioner
     {
         var result = await RunAsync(client, script, privileged, ct);
         if (result.ExitCode != 0)
-            throw new ProvisioningException($"Befehl fehlgeschlagen (Exit {result.ExitCode}): {result.Error.Trim()}");
+            throw new ProvisioningException(Tr("Command failed (exit {0}): {1}", result.ExitCode, result.Error.Trim()));
     }
 
     private sealed record CommandResult(int ExitCode, string Output, string Error);

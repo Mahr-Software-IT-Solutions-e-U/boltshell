@@ -16,21 +16,21 @@
         </div>
         <label class="quick">
             <Icon Name="search" />
-            <input id="quick-connect" type="text" aria-label="Host suchen oder Schnellverbindung" autocomplete="off" spellcheck="false"
-                   placeholder="Host suchen oder user@host:port verbinden"
+            <input id="quick-connect" type="text" aria-label="@Tr("Search hosts or quick connect")" autocomplete="off" spellcheck="false"
+                   placeholder="@Tr("Search hosts or connect to user@host:port")"
                    @bind="_query" @bind:event="oninput" @onkeydown="OnQueryKeyDown" />
-            <span class="kbd">Strg K</span>
+            <span class="kbd">@Tr("Ctrl K")</span>
         </label>
         <div class="header-right">
             @foreach (var account in Accounts.Accounts)
             {
                 <button type="button" class="chip @(account.IsUnlocked ? "chip-ok" : "chip-locked")" @onclick="() => ToggleLockAsync(account)"
-                        title="@(account.IsUnlocked ? "Entsperrt – klicken zum Sperren" : "Gesperrt – klicken zum Entsperren")">
+                        title="@(account.IsUnlocked ? Tr("Unlocked – click to lock") : Tr("Locked – click to unlock"))">
                     <Icon Name="@(account.IsUnlocked ? "unlocked" : "locked")" Size="13" StrokeWidth="2.2" />
-                    @account.Config.DisplayName@(account.IsUnlocked ? "" : " · gesperrt")
+                    @account.Config.DisplayName@(account.IsUnlocked ? "" : " · " + Tr("locked"))
                 </button>
             }
-            <button type="button" class="btn btn-icon" aria-label="Passbolt-Konten verwalten" title="Passbolt-Konten" @onclick="OnManageAccounts">
+            <button type="button" class="btn btn-icon" aria-label="@Tr("Manage Passbolt accounts")" title="@Tr("Passbolt accounts")" @onclick="OnManageAccounts">
                 <Icon Name="settings" Size="17" />
             </button>
             <WindowControls />
@@ -41,7 +41,7 @@
         <HostSidebar Filter="@_query" SelectedResourceId="@State.Active?.ResourceId" OnOpen="OpenHostAsync" OnProvision="OnProvisionHost" OnCreateRdp="OnCreateRdpHost" />
 
         <main class="ws-main">
-            <div class="tabbar" role="tablist" aria-label="Sitzungen">
+            <div class="tabbar" role="tablist" aria-label="@Tr("Sessions")">
                 @foreach (var tab in State.Tabs)
                 {
                     var active = tab == State.Active;
@@ -49,12 +49,12 @@
                          @onclick="() => State.Activate(tab)" title="@($"{(tab.IsRdp ? "RDP" : "SSH")} · {tab.Username}@{tab.HostAndPort}")">
                         <span class="dot-sm" style="background:@StateColor(tab.State)"></span>
                         @tab.Title
-                        <button type="button" class="tab-close" aria-label="Sitzung @tab.Title schließen" @onclick="() => CloseTabAsync(tab)" @onclick:stopPropagation>
+                        <button type="button" class="tab-close" aria-label="@Tr("Close session {0}", tab.Title)" @onclick="() => CloseTabAsync(tab)" @onclick:stopPropagation>
                             <Icon Name="close" Size="12" StrokeWidth="2.4" />
                         </button>
                     </div>
                 }
-                <button type="button" class="tab-add" aria-label="Neue Sitzung zum selben Host" title="Neue Sitzung zum selben Host"
+                <button type="button" class="tab-add" aria-label="@Tr("New session to the same host")" title="@Tr("New session to the same host")"
                         disabled="@(State.Active is null)" @onclick="DuplicateActive">
                     <Icon Name="plus" Size="15" />
                 </button>
@@ -64,12 +64,12 @@
                         @if (current.IsRdp)
                         {
                             <button type="button" class="btn btn-sm" disabled="@(current.State != SessionState.Connected)" @onclick="() => CtrlAltDelAsync(current)"
-                                    title="Strg+Alt+Entf an den entfernten Rechner senden">Strg+Alt+Entf</button>
+                                    title="@Tr("Send Ctrl+Alt+Del to the remote computer")">@Tr("Ctrl+Alt+Del")</button>
                         }
                         else
                         {
                             <button type="button" class="btn btn-sm toggle-sftp" aria-pressed="@(current.SftpVisible ? "true" : "false")" @onclick="() => ToggleSftp(current)">
-                                <Icon Name="folder" Size="14" />SFTP-Dateien
+                                <Icon Name="folder" Size="14" />@Tr("SFTP files")
                             </button>
                         }
                     </div>
@@ -106,10 +106,9 @@
                 {
                     <div class="empty">
                         <Icon Name="terminal" Size="32" />
-                        <h2>Keine offene Sitzung</h2>
+                        <h2>@Tr("No open session")</h2>
                         <p style="margin:0; max-width:420px; line-height:1.5">
-                            Wähle links einen Host aus oder drücke <span class="kbd">Strg K</span> und gib
-                            <span class="mono">user@host:port</span> ein.
+                            @Tr("Pick a host on the left, or press Ctrl K and enter user@host:port.")
                         </p>
                     </div>
                 }
@@ -126,19 +125,19 @@
             <span>Auth: @activeTab.AuthLabel</span>
             @if (activeTab.Spec?.HasPinnedHostKeys == true || activeTab.Rdp?.Spec.CertificateFingerprints.Count > 0)
             {
-                <span style="display:inline-flex; align-items:center; gap:5px" title="Server-Identität wird gegen Passbolt geprüft">
-                    <Icon Name="shield" Size="13" />Host-Identität aus Passbolt
+                <span style="display:inline-flex; align-items:center; gap:5px" title="@Tr("The server identity is checked against Passbolt")">
+                    <Icon Name="shield" Size="13" />@Tr("Host identity from Passbolt")
                 </span>
             }
         }
         @if (Updates.AvailableVersion is { } newVersion)
         {
             <button type="button" class="linklike" style="font-size:12px" disabled="@Updates.IsDownloading" @onclick="InstallUpdateAsync"
-                    title="Lädt die neue Version und startet BoltShell neu">
-                @(Updates.IsDownloading ? $"Update wird geladen … {Updates.Progress} %" : $"Update auf {newVersion} verfügbar – jetzt installieren")
+                    title="@Tr("Downloads the new version and restarts BoltShell")">
+                @(Updates.IsDownloading ? Tr("Downloading update … {0} %", Updates.Progress) : Tr("Update to {0} available – install now", newVersion))
             </button>
         }
-        <span>Passbolt: @Accounts.Accounts.Count @(Accounts.Accounts.Count == 1 ? "Konto" : "Konten") · @Accounts.LockedCount gesperrt</span>
+        <span>Passbolt: @(Accounts.Accounts.Count == 1 ? Tr("1 account") : Tr("{0} accounts", Accounts.Accounts.Count)) · @Tr("{0} locked", Accounts.LockedCount)</span>
         @if (State.Active is { Terminal: { } term })
         {
             <span class="mono" style="margin-left:auto">xterm-256color · UTF-8 · @(term.Size.Columns)×@(term.Size.Rows)</span>
@@ -167,8 +166,8 @@
 
     private async Task InstallUpdateAsync()
     {
-        if (State.Tabs.Count > 0 && !await TextPromptDialog.ConfirmAsync(Dialogs, "Update installieren",
-                $"BoltShell wird für das Update neu gestartet; {State.Tabs.Count} offene Sitzung(en) werden getrennt.", "Installieren"))
+        if (State.Tabs.Count > 0 && !await TextPromptDialog.ConfirmAsync(Dialogs, Tr("Install update"),
+                Tr("BoltShell restarts for the update; {0} open session(s) will be disconnected.", State.Tabs.Count), Tr("Install")))
             return;
         try
         {
@@ -176,7 +175,7 @@
         }
         catch (Exception ex)
         {
-            Snackbar.Add("Update fehlgeschlagen: " + ex.Message, Severity.Error);
+            Snackbar.Add(Tr("Update failed: {0}", ex.Message), Severity.Error);
         }
     }
 
@@ -233,14 +232,14 @@
             return true;
         if (Accounts.Find(tab.AccountId) is not { } account)
         {
-            Snackbar.Add("Das Passbolt-Konto dieser Sitzung wurde entfernt.", Severity.Warning);
+            Snackbar.Add(Tr("The Passbolt account of this session was removed."), Severity.Warning);
             return false;
         }
         if (!await UnlockDialog.ShowAsync(Dialogs, account))
             return false;
         if (account.Resources.FirstOrDefault(r => r.Id == tab.ResourceId) is not { } resource)
         {
-            Snackbar.Add("Die Ressource ist in Passbolt nicht mehr vorhanden.", Severity.Warning);
+            Snackbar.Add(Tr("The resource no longer exists in Passbolt."), Severity.Warning);
             return false;
         }
         try
@@ -275,7 +274,7 @@
     private async Task CloseTabAsync(SessionTab tab)
     {
         if (tab.Sftp?.Transfers.Any(t => t.State == TransferState.Running) == true
-            && !await TextPromptDialog.ConfirmAsync(Dialogs, "Übertragungen laufen", "Sitzung schließen und laufende Übertragungen abbrechen?", "Schließen"))
+            && !await TextPromptDialog.ConfirmAsync(Dialogs, Tr("Transfers running"), Tr("Close the session and cancel running transfers?"), Tr("Close")))
             return;
         State.Remove(tab);
         if (tab.Terminal is not null)
@@ -336,15 +335,17 @@
             return;
         }
         if (matches.Count > 1)
-            Snackbar.Add($"{matches.Count} Hosts passen – Suche weiter eingrenzen oder links auswählen.", Severity.Info);
+            Snackbar.Add(Tr("{0} hosts match – narrow the search or pick one on the left.", matches.Count), Severity.Info);
         else
-            Snackbar.Add("Kein Host gefunden. Für eine direkte Verbindung user@host:port eingeben.", Severity.Info);
+            Snackbar.Add(Tr("No host found. Enter user@host:port for a direct connection."), Severity.Info);
     }
 
     private static string Banner(SessionTab tab) =>
         tab.AccountId is null
-            ? "Direkte Verbindung · Passwort nur im Speicher"
-            : $"{(tab.Spec!.Credentials.HasPrivateKey ? "Schlüssel" : "Passwort")} aus Passbolt · {tab.Spec.DisplayName} · nur im Speicher entschlüsselt";
+            ? Tr("Direct connection · password only in memory")
+            : tab.Spec!.Credentials.HasPrivateKey
+                ? Tr("Key from Passbolt · {0} · decrypted in memory only", tab.Spec.DisplayName)
+                : Tr("Password from Passbolt · {0} · decrypted in memory only", tab.Spec.DisplayName);
 
     private static string StateColor(SessionState state) => state switch
     {
@@ -355,10 +356,10 @@
 
     private static string StateText(SessionState state) => state switch
     {
-        SessionState.Connected => "Verbunden",
-        SessionState.Connecting or SessionState.Created => "Verbinde",
-        SessionState.Closed => "Getrennt",
-        _ => "Fehler",
+        SessionState.Connected => Tr("Connected"),
+        SessionState.Connecting or SessionState.Created => Tr("Connecting"),
+        SessionState.Closed => Tr("Disconnected"),
+        _ => Tr("Error"),
     };
 
     private void OnChanged() => InvokeAsync(StateHasChanged);

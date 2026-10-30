@@ -2,5 +2,7 @@
   "WARNING: RDP certificate has changed": "WARNUNG: RDP-Zertifikat hat sich geändert",
   "WARNING: host key has changed": "WARNUNG: Host-Key hat sich geändert",
   "Unknown RDP certificate": "Unbekanntes RDP-Zertifikat",
-  "Unknown host": "Unbekannter Host"
+  "Unknown host": "Unbekannter Host",
+  "An unexpected error has occurred.": "Ein unerwarteter Fehler ist aufgetreten.",
+  "Reload": "Neu laden"
 }

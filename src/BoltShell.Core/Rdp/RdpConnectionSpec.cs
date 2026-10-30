@@ -1,5 +1,6 @@
 using BoltShell.Core.Passbolt;
 using BoltShell.Core.Ssh;
+using static BoltShell.Core.Localization.Texts;
 
 namespace BoltShell.Core.Rdp;
 
@@ -77,7 +78,7 @@ public static class RdpConnectionMapper
     public static RdpConnectionSpec Map(PassboltResource resource, PassboltSecret secret)
     {
         var target = resource.Uris.Select(u => RdpTarget.TryParse(u, out var t) ? t : null).FirstOrDefault(t => t is not null)
-                     ?? throw new InvalidOperationException($"Resource '{resource.Name}' has no rdp:// URI.");
+                     ?? throw new InvalidOperationException(Tr("Resource '{0}' has no rdp:// URI.", resource.Name));
 
         string? FieldValue(string name) =>
             resource.CustomFields
@@ -87,7 +88,7 @@ public static class RdpConnectionMapper
 
         var (fieldUser, fieldDomain) = RdpTarget.SplitUser(resource.Username);
         var username = target.Username ?? fieldUser
-                       ?? throw new InvalidOperationException($"Resource '{resource.Name}' has no username.");
+                       ?? throw new InvalidOperationException(Tr("Resource '{0}' has no username.", resource.Name));
         var domain = target.Domain ?? FieldValue(DomainField)?.Trim() ?? fieldDomain;
 
         var fingerprints = (FieldValue(CertificateField) ?? "")

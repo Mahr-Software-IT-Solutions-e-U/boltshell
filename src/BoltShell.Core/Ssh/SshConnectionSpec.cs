@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using BoltShell.Core.Passbolt;
+using static BoltShell.Core.Localization.Texts;
 
 namespace BoltShell.Core.Ssh;
 
@@ -60,10 +61,10 @@ public static partial class SshConnectionMapper
     public static SshConnectionSpec Map(PassboltResource resource, PassboltSecret secret)
     {
         var target = resource.Uris.Select(u => SshTarget.TryParse(u, out var t) ? t : null).FirstOrDefault(t => t is not null)
-                     ?? throw new InvalidOperationException($"Resource '{resource.Name}' has no ssh:// URI.");
+                     ?? throw new InvalidOperationException(Tr("Resource '{0}' has no ssh:// URI.", resource.Name));
 
         var username = target.Username ?? resource.Username
-                       ?? throw new InvalidOperationException($"Resource '{resource.Name}' has no username.");
+                       ?? throw new InvalidOperationException(Tr("Resource '{0}' has no username.", resource.Name));
 
         // v5 custom field values live in the secret; fall back to the (encrypted) metadata value.
         string? FieldValue(string name) =>
@@ -120,7 +121,7 @@ public static partial class SshConnectionMapper
             // A public key, optionally preceded by known_hosts host patterns / markers.
             var index = Array.FindIndex(parts, IsKeyAlgorithm);
             if (index < 0 || index + 1 >= parts.Length)
-                throw new FormatException($"Unrecognised entry in {HostKeyField}: '{raw}'.");
+                throw new FormatException(Tr("Unrecognised entry in {0}: '{1}'.", HostKeyField, raw));
             byte[] blob;
             try
             {
@@ -128,7 +129,7 @@ public static partial class SshConnectionMapper
             }
             catch (FormatException)
             {
-                throw new FormatException($"Invalid base64 in {HostKeyField}: '{raw}'.");
+                throw new FormatException(Tr("Invalid base64 in {0}: '{1}'.", HostKeyField, raw));
             }
             result.Add(new ExpectedHostKey(parts[index], Convert.ToBase64String(SHA256.HashData(blob)).TrimEnd('=')));
         }

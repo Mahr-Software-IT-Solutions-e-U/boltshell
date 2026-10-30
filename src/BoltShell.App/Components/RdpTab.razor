@@ -10,20 +10,20 @@
     {
         <div class="terminal-overlay">
             <div class="overlay-card" role="alert">
-                <h3>@(Tab.RdpState == SessionState.Closed ? "Sitzung beendet" : "Verbindung fehlgeschlagen")</h3>
+                <h3>@(Tab.RdpState == SessionState.Closed ? Tr("Session ended") : Tr("Connection failed"))</h3>
                 @if (_message is not null)
                 {
                     <p>@_message</p>
                 }
-                <div><button type="button" class="btn btn-primary" @onclick="ConnectAsync"><Icon Name="refresh" Size="14" />Neu verbinden</button></div>
+                <div><button type="button" class="btn btn-primary" @onclick="ConnectAsync"><Icon Name="refresh" Size="14" />@Tr("Reconnect")</button></div>
             </div>
         </div>
     }
     else if (Tab.RdpState is SessionState.Connecting or SessionState.Created)
     {
-        <div class="terminal-overlay" style="background:transparent; flex-direction:column; gap:12px" aria-label="Verbinde">
+        <div class="terminal-overlay" style="background:transparent; flex-direction:column; gap:12px" aria-label="@Tr("Connecting")">
             <div class="spinner"></div>
-            <span class="muted" style="font-size:13px">Verbinde mit @Tab.HostAndPort …</span>
+            <span class="muted" style="font-size:13px">@Tr("Connecting to {0} …", Tab.HostAndPort)</span>
         </div>
     }
 </div>
@@ -64,7 +64,7 @@
             return;
         if (BeforeConnect is not null && !await BeforeConnect())
         {
-            _message = "Das Passbolt-Konto ist gesperrt – zum Verbinden bitte entsperren.";
+            _message = Tr("The Passbolt account is locked – unlock it to connect.");
             SetState(SessionState.Failed);
             return;
         }
@@ -108,17 +108,17 @@
     {
         _message = (kind, httpStatus) switch
         {
-            (1 or 2, _) => "Anmeldung fehlgeschlagen: Benutzer, Domäne oder Passwort sind falsch.",
-            (3, _) => "Zugriff verweigert.",
-            (6, _) => "Der Server hat das angeforderte Sicherheitsprotokoll abgelehnt (NLA/TLS-Einstellung des Servers prüfen).",
-            (_, 495) => "Das Zertifikat des Servers wurde nicht bestätigt oder passt nicht zu rdp_cert_sha256 in Passbolt (Details oberhalb).",
-            (_, 403) => "Der lokale RDP-Vermittler hat die Verbindung abgelehnt.",
-            _ when wsaError != 0 => $"Der RDP-Server ist nicht erreichbar (Socket-Fehler {wsaError}).",
-            _ when tlsAlert != 0 => $"TLS-Handshake mit dem Server fehlgeschlagen (Alert {tlsAlert}).",
-            (4 or 5, _) => "Der RDP-Vermittler konnte die Verbindung nicht aufbauen.",
-            _ => string.IsNullOrWhiteSpace(detail) ? message : $"{message}: {detail}",
+            (1 or 2, _) => Tr("Sign-in failed: user, domain or password is wrong."),
+            (3, _) => Tr("Access denied."),
+            (6, _) => Tr("The server rejected the requested security protocol (check the server's NLA/TLS settings)."),
+            (_, 495) => Tr("The server certificate was not confirmed or does not match rdp_cert_sha256 in Passbolt (details above)."),
+            (_, 403) => Tr("The local RDP proxy refused the connection."),
+            _ when wsaError != 0 => Tr("The RDP server is not reachable (socket error {0}).", wsaError),
+            _ when tlsAlert != 0 => Tr("TLS handshake with the server failed (alert {0}).", tlsAlert),
+            (4 or 5, _) => Tr("The RDP proxy could not establish the connection."),
+            _ => (kind == 0 ? Tr("General error") : message) is var text && string.IsNullOrWhiteSpace(detail) ? text : $"{text}: {detail}",
         };
-        _message += $" Details im Log: {LogDirectory}";
+        _message += " " + Tr("Details in the log: {0}", LogDirectory);
         SetState(SessionState.Failed);
         return InvokeAsync(StateHasChanged);
     }

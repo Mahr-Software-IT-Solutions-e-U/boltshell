@@ -4,15 +4,15 @@
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
 
-<nav class="sidebar" aria-label="Hosts nach Passbolt-Konto">
+<nav class="sidebar" aria-label="@Tr("Hosts by Passbolt account")">
     <div class="sidebar-head">
-        <span class="overline">Hosts</span>
+        <span class="overline">@Tr("Hosts")</span>
         @if (!string.IsNullOrWhiteSpace(Filter))
         {
-            <span class="muted" style="font-size:11px; margin-left:auto; margin-right:6px">Filter: @Filter</span>
+            <span class="muted" style="font-size:11px; margin-left:auto; margin-right:6px">@Tr("Filter: {0}", Filter)</span>
         }
         <div style="position:relative">
-            <button type="button" class="btn btn-icon btn-sm btn-ghost" aria-label="Host hinzufügen" title="Host hinzufügen" @ref="_menuButton"
+            <button type="button" class="btn btn-icon btn-sm btn-ghost" aria-label="@Tr("Add host")" title="@Tr("Add host")" @ref="_menuButton"
                     aria-haspopup="menu" aria-expanded="@(_menuOpen ? "true" : "false")" @onclick="ToggleMenuAsync">
                 <Icon Name="plus" />
             </button>
@@ -21,10 +21,10 @@
                 <div class="menu-backdrop" @onclick="() => _menuOpen = false"></div>
                 <div class="menu" role="menu" style="@_menuStyle">
                     <button type="button" role="menuitem" @onclick="() => Choose(OnProvision)">
-                        <Icon Name="server" Size="15" /><span><b>SSH-Host provisionieren</b><br /><span class="muted">Mit Passwort verbinden, Schlüssel einrichten</span></span>
+                        <Icon Name="server" Size="15" /><span><b>@Tr("Provision SSH host")</b><br /><span class="muted">@Tr("Connect with a password, set up a key")</span></span>
                     </button>
                     <button type="button" role="menuitem" @onclick="() => Choose(OnCreateRdp)">
-                        <Icon Name="monitor" Size="15" /><span><b>RDP-Host anlegen</b><br /><span class="muted">Windows-Zugang in Passbolt speichern</span></span>
+                        <Icon Name="monitor" Size="15" /><span><b>@Tr("Create RDP host")</b><br /><span class="muted">@Tr("Save Windows credentials in Passbolt")</span></span>
                     </button>
                 </div>
             }
@@ -43,26 +43,26 @@
                 </div>
                 @if (account.IsUnlocked)
                 {
-                    <button type="button" class="btn btn-icon btn-sm btn-ghost" style="margin-left:auto" aria-label="@account.Config.DisplayName synchronisieren"
-                            title="Synchronisieren" @onclick="() => RefreshAsync(account)" disabled="@_refreshing.Contains(account.Id)">
+                    <button type="button" class="btn btn-icon btn-sm btn-ghost" style="margin-left:auto" aria-label="@Tr("Sync {0}", account.Config.DisplayName)"
+                            title="@Tr("Sync")" @onclick="() => RefreshAsync(account)" disabled="@_refreshing.Contains(account.Id)">
                         <Icon Name="refresh" Size="14" />
                     </button>
                 }
                 else
                 {
-                    <span style="margin-left:auto; font-size:11px; color:#F2C66B">Gesperrt</span>
+                    <span style="margin-left:auto; font-size:11px; color:#F2C66B">@Tr("Locked")</span>
                 }
             </div>
 
             @if (!account.IsUnlocked && account.Resources.Count == 0)
             {
                 <button type="button" class="btn btn-sm" style="margin:0 6px" @onclick="() => UnlockDialog.ShowAsync(Dialogs, account)">
-                    <Icon Name="locked" Size="14" />Entsperren, um Hosts zu laden
+                    <Icon Name="locked" Size="14" />@Tr("Unlock to load hosts")
                 </button>
             }
             else if (hosts.Count == 0)
             {
-                <span class="muted" style="font-size:12px; padding:2px 8px">@(string.IsNullOrWhiteSpace(Filter) ? "Keine Ressourcen mit ssh:// oder rdp://." : "Keine Treffer.")</span>
+                <span class="muted" style="font-size:12px; padding:2px 8px">@(string.IsNullOrWhiteSpace(Filter) ? Tr("No resources with ssh:// or rdp://.") : Tr("No matches."))</span>
             }
 
             @foreach (var resource in hosts)
@@ -79,7 +79,7 @@
                     </span>
                     @if (HasField(resource, SshConnectionMapper.HostKeyField) || HasField(resource, BoltShell.Core.Rdp.RdpConnectionMapper.CertificateField))
                     {
-                        <span title="Host-Identität in Passbolt hinterlegt" style="color:#7EE2A8; display:inline-flex"><Icon Name="shield" Size="13" /></span>
+                        <span title="@Tr("Host identity stored in Passbolt")" style="color:#7EE2A8; display:inline-flex"><Icon Name="shield" Size="13" /></span>
                     }
                     @if (isRdp)
                     {
@@ -95,8 +95,8 @@
     }
 
     <div class="sidebar-hint">
-        Hosts sind Passbolt-Ressourcen mit einer URI <span class="mono" style="color:var(--text)">ssh://user@host</span>
-        oder <span class="mono" style="color:var(--text)">rdp://user@host</span>.
+        @Tr("Hosts are Passbolt resources with a URI") <span class="mono" style="color:var(--text)">ssh://user@host</span>
+        @Tr("or") <span class="mono" style="color:var(--text)">rdp://user@host</span>.
     </div>
 </nav>
 

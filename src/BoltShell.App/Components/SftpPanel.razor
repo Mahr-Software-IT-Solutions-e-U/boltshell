@@ -6,7 +6,7 @@
 @inject SettingsStore Settings
 @inject IJSRuntime JS
 
-<aside class="sftp" aria-label="SFTP-Dateiexplorer">
+<aside class="sftp" aria-label="@Tr("SFTP file explorer")">
     <div class="sftp-head">
         <div class="sftp-title">
             <span style="font-size:13px; font-weight:600">@(Session.IsScpFallback ? "SCP" : "SFTP")</span>
@@ -14,28 +14,28 @@
             @if (!Session.IsScpFallback)
             {
                 <label style="margin-left:auto; display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--text-2)"
-                       title="Ordner automatisch wechseln, wenn die Shell ihr Verzeichnis im Fenstertitel meldet">
-                    <input type="checkbox" style="accent-color:#F2B84B" checked="@Tab.FollowTerminal" @onchange="OnFollowChanged" />Terminal folgen
+                       title="@Tr("Switch folders automatically when the shell reports its directory in the window title")">
+                    <input type="checkbox" style="accent-color:#F2B84B" checked="@Tab.FollowTerminal" @onchange="OnFollowChanged" />@Tr("Follow terminal")
                 </label>
             }
         </div>
 
         @if (_connecting)
         {
-            <span class="muted" style="font-size:12px">Verbinde …</span>
+            <span class="muted" style="font-size:12px">@Tr("Connecting …")</span>
         }
         else if (_error is not null)
         {
             <div role="alert" style="display:flex; flex-direction:column; gap:8px">
                 <span class="error-text">@_error</span>
-                <div><button type="button" class="btn btn-sm" @onclick="ConnectAsync">Erneut versuchen</button></div>
+                <div><button type="button" class="btn btn-sm" @onclick="ConnectAsync">@Tr("Try again")</button></div>
             </div>
         }
         else
         {
             @if (!Session.IsScpFallback)
             {
-                <nav aria-label="Pfad" class="crumbs">
+                <nav aria-label="@Tr("Path")" class="crumbs">
                     @foreach (var (label, path, last) in Crumbs())
                     {
                         if (last)
@@ -51,19 +51,19 @@
                 </nav>
             }
             <div class="toolbar">
-                <button type="button" class="btn btn-sm btn-primary" @onclick="UploadFilesAsync"><Icon Name="upload" Size="14" StrokeWidth="2.2" />Hochladen</button>
+                <button type="button" class="btn btn-sm btn-primary" @onclick="UploadFilesAsync"><Icon Name="upload" Size="14" StrokeWidth="2.2" />@Tr("Upload")</button>
                 @if (Session.IsScpFallback)
                 {
-                    <button type="button" class="btn btn-sm" @onclick="DownloadByPathAsync"><Icon Name="download" Size="14" />Pfad herunterladen</button>
+                    <button type="button" class="btn btn-sm" @onclick="DownloadByPathAsync"><Icon Name="download" Size="14" />@Tr("Download path")</button>
                 }
                 else
                 {
-                    <button type="button" class="btn btn-sm" disabled="@(_selected is null)" @onclick="() => DownloadAsync(_selected!)"><Icon Name="download" Size="14" />Herunterladen</button>
-                    <button type="button" class="btn btn-sm" @onclick="CreateFolderAsync">Neuer Ordner</button>
-                    <button type="button" class="btn btn-sm btn-icon" aria-label="Ordner hochladen" title="Ordner hochladen" @onclick="UploadFolderAsync"><Icon Name="folder-up" Size="14" /></button>
-                    <button type="button" class="btn btn-sm btn-icon" aria-label="Umbenennen" title="Umbenennen" disabled="@(_selected is null)" @onclick="() => RenameAsync(_selected!)"><Icon Name="edit" Size="14" /></button>
-                    <button type="button" class="btn btn-sm btn-icon" aria-label="Löschen" title="Löschen" disabled="@(_selected is null)" @onclick="() => DeleteAsync(_selected!)"><Icon Name="trash" Size="14" /></button>
-                    <button type="button" class="btn btn-sm btn-icon" aria-label="Aktualisieren" title="Aktualisieren" @onclick="() => NavigateAsync(_path)"><Icon Name="refresh" Size="14" /></button>
+                    <button type="button" class="btn btn-sm" disabled="@(_selected is null)" @onclick="() => DownloadAsync(_selected!)"><Icon Name="download" Size="14" />@Tr("Download")</button>
+                    <button type="button" class="btn btn-sm" @onclick="CreateFolderAsync">@Tr("New folder")</button>
+                    <button type="button" class="btn btn-sm btn-icon" aria-label="@Tr("Upload folder")" title="@Tr("Upload folder")" @onclick="UploadFolderAsync"><Icon Name="folder-up" Size="14" /></button>
+                    <button type="button" class="btn btn-sm btn-icon" aria-label="@Tr("Rename")" title="@Tr("Rename")" disabled="@(_selected is null)" @onclick="() => RenameAsync(_selected!)"><Icon Name="edit" Size="14" /></button>
+                    <button type="button" class="btn btn-sm btn-icon" aria-label="@Tr("Delete")" title="@Tr("Delete")" disabled="@(_selected is null)" @onclick="() => DeleteAsync(_selected!)"><Icon Name="trash" Size="14" /></button>
+                    <button type="button" class="btn btn-sm btn-icon" aria-label="@Tr("Refresh")" title="@Tr("Refresh")" @onclick="() => NavigateAsync(_path)"><Icon Name="refresh" Size="14" /></button>
                 }
             </div>
         }
@@ -72,7 +72,7 @@
     @if (Session.IsScpFallback)
     {
         <p class="muted" style="margin:12px 14px; font-size:12px; line-height:1.5">
-            Der Server bietet kein SFTP. Über SCP können Dateien übertragen, aber keine Ordner angezeigt werden. Uploads landen in
+            @Tr("The server does not offer SFTP. Files can be transferred over SCP, but folders cannot be listed. Uploads go to")
             <span class="mono">@_path</span>.
         </p>
     }
@@ -81,12 +81,12 @@
         <div class="files">
             <table>
                 <thead>
-                    <tr><th scope="col">Name</th><th scope="col" class="num col-size">Größe</th><th scope="col" class="num col-date">Geändert</th></tr>
+                    <tr><th scope="col">@Tr("Name")</th><th scope="col" class="num col-size">@Tr("Size")</th><th scope="col" class="num col-date">@Tr("Modified")</th></tr>
                 </thead>
                 <tbody>
                     @if (_path != "/")
                     {
-                        <tr @ondblclick="GoUpAsync" title="Übergeordneter Ordner">
+                        <tr @ondblclick="GoUpAsync" title="@Tr("Parent folder")">
                             <td class="name"><span class="file-name"><Icon Name="folder" Color="#79C0FF" StrokeWidth="1.8" />..</span></td>
                             <td></td><td></td>
                         </tr>
@@ -108,7 +108,7 @@
                                     @entry.Name
                                     @if (entry.IsSymlink)
                                     {
-                                        <span title="Symbolischer Link" style="display:inline-flex; color:#9AA1AC"><Icon Name="link" Size="12" /></span>
+                                        <span title="@Tr("Symbolic link")" style="display:inline-flex; color:#9AA1AC"><Icon Name="link" Size="12" /></span>
                                     }
                                 </span>
                             </td>
@@ -124,8 +124,8 @@
     @if (!_connecting && _error is null)
     {
         <div class="dropzone" @ref="_dropzone">
-            Dateien hierher ziehen zum Hochladen nach <span class="mono" style="color:var(--text-2)">@(LastSegment(_path))/</span>
-            <InputFile multiple OnChange="OnDropAsync" aria-label="Dateien zum Hochladen auswählen oder hierher ziehen" />
+            @Tr("Drag files here to upload them to") <span class="mono" style="color:var(--text-2)">@(LastSegment(_path))/</span>
+            <InputFile multiple OnChange="OnDropAsync" aria-label="@Tr("Choose files to upload or drag them here")" />
         </div>
     }
 
@@ -134,10 +134,10 @@
         var transfers = Session.Transfers;
         <div class="transfers">
             <div style="display:flex; align-items:center; justify-content:space-between">
-                <span style="font-size:12px; font-weight:600; color:var(--text-2)">Übertragungen</span>
+                <span style="font-size:12px; font-weight:600; color:var(--text-2)">@Tr("Transfers")</span>
                 <span style="display:flex; align-items:center; gap:8px">
-                    <span class="muted" style="font-size:12px">@transfers.Count(t => t.State is TransferState.Running or TransferState.Queued) aktiv · @transfers.Count(t => t.State == TransferState.Completed) fertig</span>
-                    <button type="button" class="linklike" @onclick="Session.ClearFinishedTransfers">Leeren</button>
+                    <span class="muted" style="font-size:12px">@Tr("{0} active · {1} done", transfers.Count(t => t.State is TransferState.Running or TransferState.Queued), transfers.Count(t => t.State == TransferState.Completed))</span>
+                    <button type="button" class="linklike" @onclick="Session.ClearFinishedTransfers">@Tr("Clear")</button>
                 </span>
             </div>
             @foreach (var t in transfers)
@@ -149,20 +149,20 @@
                             @switch (t.State)
                             {
                                 case TransferState.Completed when t.Warnings.Count > 0:
-                                    <span style="color:#F2C66B" title="@string.Join("\n", t.Warnings)">Fertig · @t.Warnings.Count übersprungen</span>
+                                    <span style="color:#F2C66B" title="@string.Join("\n", t.Warnings)">@Tr("Done · {0} skipped", t.Warnings.Count)</span>
                                     break;
                                 case TransferState.Completed:
-                                    <span style="color:#7EE2A8">Fertig</span>
+                                    <span style="color:#7EE2A8">@Tr("Done")</span>
                                     break;
                                 case TransferState.Failed:
-                                    <span class="error-text" title="@t.Error">Fehler</span>
+                                    <span class="error-text" title="@t.Error">@Tr("Error")</span>
                                     break;
                                 case TransferState.Cancelled:
-                                    <span class="muted">Abgebrochen</span>
+                                    <span class="muted">@Tr("Cancelled")</span>
                                     break;
                                 default:
                                     <span class="muted">@t.Percent.ToString("0", CultureInfo.InvariantCulture) %</span>
-                                    <button type="button" class="tab-close" aria-label="@t.Name abbrechen" @onclick="t.Cancel"><Icon Name="close" Size="11" StrokeWidth="2.4" /></button>
+                                    <button type="button" class="tab-close" aria-label="@Tr("Cancel {0}", t.Name)" @onclick="t.Cancel"><Icon Name="close" Size="11" StrokeWidth="2.4" /></button>
                                     break;
                             }
                         </span>
@@ -224,7 +224,7 @@
     {
         if (BeforeConnect is not null && !await BeforeConnect())
         {
-            _error = "Das Passbolt-Konto ist gesperrt – zum Verbinden bitte entsperren.";
+            _error = Tr("The Passbolt account is locked – please unlock it to connect.");
             return;
         }
         _connecting = true;
@@ -243,12 +243,12 @@
             }
             catch (KeyPassphraseRequiredException ex)
             {
-                var passphrase = await TextPromptDialog.ShowAsync(Dialogs, "Passphrase des SSH-Schlüssels", "Passphrase",
-                    ex.WrongPassphrase ? "Die Passphrase war falsch. Bitte erneut versuchen." : $"Der private Schlüssel für {Session.Spec.DisplayName} ist verschlüsselt.",
+                var passphrase = await TextPromptDialog.ShowAsync(Dialogs, Tr("SSH key passphrase"), Tr("Passphrase"),
+                    ex.WrongPassphrase ? Tr("The passphrase was wrong. Please try again.") : Tr("The private key for {0} is encrypted.", Session.Spec.DisplayName),
                     secret: true);
                 if (passphrase is null)
                 {
-                    _error = "Abgebrochen.";
+                    _error = Tr("Cancelled.");
                     break;
                 }
                 Session.UpdateCredentials(Session.Spec.Credentials with { KeyPassphrase = passphrase });
@@ -354,13 +354,13 @@
 
     private async Task UploadFilesAsync()
     {
-        foreach (var file in await FileDialogs.PickFilesAsync("Dateien hochladen"))
+        foreach (var file in await FileDialogs.PickFilesAsync(Tr("Upload files")))
             Track(Session.UploadAsync(file, _path));
     }
 
     private async Task UploadFolderAsync()
     {
-        if (await FileDialogs.PickFolderAsync("Ordner hochladen") is { } folder)
+        if (await FileDialogs.PickFolderAsync(Tr("Upload folder")) is { } folder)
             Track(Session.UploadAsync(folder, _path));
     }
 
@@ -381,14 +381,14 @@
 
     private async Task DownloadByPathAsync()
     {
-        var remote = await TextPromptDialog.ShowAsync(Dialogs, "Über SCP herunterladen", "Pfad der Datei auf dem Server", initialValue: _path);
+        var remote = await TextPromptDialog.ShowAsync(Dialogs, Tr("Download over SCP"), Tr("Path of the file on the server"), initialValue: _path);
         if (remote is not null && await PickDownloadFolderAsync() is { } folder)
             Track(Session.DownloadPathAsync(remote, folder), refresh: false);
     }
 
     private async Task<string?> PickDownloadFolderAsync()
     {
-        var folder = await FileDialogs.PickFolderAsync("Herunterladen nach", Settings.Current.DownloadDirectory);
+        var folder = await FileDialogs.PickFolderAsync(Tr("Download to"), Settings.Current.DownloadDirectory);
         if (folder is not null)
             Settings.Update(s => s with { DownloadDirectory = folder });
         return folder;
@@ -396,20 +396,20 @@
 
     private async Task CreateFolderAsync()
     {
-        if (await TextPromptDialog.ShowAsync(Dialogs, "Neuer Ordner", "Name") is { } name)
+        if (await TextPromptDialog.ShowAsync(Dialogs, Tr("New folder"), Tr("Name")) is { } name)
             await RunAsync(() => Session.CreateDirectoryAsync(SftpSession.CombineRemote(_path, name)));
     }
 
     private async Task RenameAsync(RemoteEntry entry)
     {
-        if (await TextPromptDialog.ShowAsync(Dialogs, "Umbenennen", "Neuer Name", initialValue: entry.Name) is { } name && name != entry.Name)
+        if (await TextPromptDialog.ShowAsync(Dialogs, Tr("Rename"), Tr("New name"), initialValue: entry.Name) is { } name && name != entry.Name)
             await RunAsync(() => Session.RenameAsync(entry.FullPath, SftpSession.CombineRemote(_path, name)));
     }
 
     private async Task DeleteAsync(RemoteEntry entry)
     {
-        var message = entry.IsDirectory ? $"Ordner „{entry.Name}“ mit allen Inhalten löschen?" : $"„{entry.Name}“ löschen?";
-        if (await TextPromptDialog.ConfirmAsync(Dialogs, "Löschen", message, "Löschen"))
+        var message = entry.IsDirectory ? Tr("Delete the folder “{0}” and all of its contents?", entry.Name) : Tr("Delete “{0}”?", entry.Name);
+        if (await TextPromptDialog.ConfirmAsync(Dialogs, Tr("Delete"), message, Tr("Delete")))
             await RunAsync(() => Session.DeleteAsync(entry));
     }
 

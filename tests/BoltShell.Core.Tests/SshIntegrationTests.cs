@@ -231,7 +231,7 @@ public sealed class SshIntegrationTests : IClassFixture<LocalSshServer>, IDispos
         Assert.Empty(Directory.GetFiles(_workDir, "*outside*", SearchOption.AllDirectories));
         Assert.Equal(TransferState.Completed, transfer.State);
         Assert.Contains(transfer.Warnings, w => w.Contains("outside.txt"));  // skipped and reported
-        Assert.Contains(transfer.Warnings, w => w.Contains("Verknüpfung"));  // link at the target skipped and reported
+        Assert.Contains(transfer.Warnings, w => w.Contains("symlink"));  // link at the target skipped and reported
         Assert.Equal(2, transfer.Warnings.Count);
     }
 

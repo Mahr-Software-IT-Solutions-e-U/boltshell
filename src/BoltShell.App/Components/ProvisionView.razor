@@ -10,10 +10,10 @@
 
 <div class="page">
     <header class="page-header" data-drag>
-        <button type="button" class="btn btn-sm" @onclick="OnBack" disabled="@_running"><Icon Name="back" Size="14" StrokeWidth="2.2" />Zurück</button>
+        <button type="button" class="btn btn-sm" @onclick="OnBack" disabled="@_running"><Icon Name="back" Size="14" StrokeWidth="2.2" />@Tr("Back")</button>
         <span class="muted" style="font-size:13px">Hosts</span>
         <span style="color:var(--dim)" aria-hidden="true">›</span>
-        <span style="font-size:13px; font-weight:600">Host provisionieren</span>
+        <span style="font-size:13px; font-weight:600">@Tr("Provision host")</span>
             <span style="margin-left:auto"></span>
         <WindowControls />
     </header>
@@ -22,43 +22,43 @@
         <div class="cols">
             <div class="col-main">
                 <section class="card" aria-labelledby="p-conn">
-                    <h2 id="p-conn">Bestehender Zugang</h2>
+                    <h2 id="p-conn">@Tr("Existing access")</h2>
                     <p class="muted" style="margin:0; font-size:13px; line-height:1.5">
-                        Mit diesen Daten meldet sich die App einmalig per Passwort an, um den Schlüssel einzurichten.
+                        @Tr("The app signs in once with these credentials using the password to set up the key.")
                     </p>
                     <div style="display:grid; grid-template-columns:repeat(6, minmax(0,1fr)); gap:12px">
-                        <label class="field" style="grid-column:span 6">Name in Passbolt
-                            <input class="input" @bind="_name" @bind:event="oninput" placeholder="z. B. odoo-prod-01" disabled="@Locked" />
+                        <label class="field" style="grid-column:span 6">@Tr("Name in Passbolt")
+                            <input class="input" @bind="_name" @bind:event="oninput" placeholder="@Tr("e.g. odoo-prod-01")" disabled="@Locked" />
                         </label>
-                        <label class="field" style="grid-column:span 4">Host oder IP
+                        <label class="field" style="grid-column:span 4">@Tr("Host or IP")
                             <input class="input mono" @bind="_host" @bind:event="oninput" @onblur="SuggestName" placeholder="10.0.10.21" disabled="@Locked" />
                         </label>
                         <label class="field" style="grid-column:span 2">Port
                             <input class="input mono" type="number" min="1" max="65535" @bind="_port" disabled="@Locked" />
                         </label>
-                        <label class="field" style="grid-column:span 3">Benutzer
+                        <label class="field" style="grid-column:span 3">@Tr("User")
                             <input class="input mono" @bind="_user" @bind:event="oninput" autocomplete="off" disabled="@Locked" />
                         </label>
-                        <label class="field" style="grid-column:span 3">Passwort
+                        <label class="field" style="grid-column:span 3">@Tr("Password")
                             <input class="input" type="password" @bind="_password" @bind:event="oninput" autocomplete="off" disabled="@Locked" />
                         </label>
                     </div>
                 </section>
 
                 <section class="card" aria-labelledby="p-pb">
-                    <h2 id="p-pb">Ablage in Passbolt</h2>
+                    <h2 id="p-pb">@Tr("Storage in Passbolt")</h2>
                     <div style="display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:12px">
-                        <label class="field">Passbolt-Konto
+                        <label class="field">@Tr("Passbolt account")
                             <select class="input" value="@_accountId" @onchange="OnAccountChanged" disabled="@Locked">
                                 @foreach (var account in Accounts.Accounts)
                                 {
-                                    <option value="@account.Id">@account.Config.DisplayName@(account.IsUnlocked ? "" : " (gesperrt)")</option>
+                                    <option value="@account.Id">@account.Config.DisplayName@(account.IsUnlocked ? "" : " " + Tr("(locked)"))</option>
                                 }
                             </select>
                         </label>
-                        <label class="field">Ordner
+                        <label class="field">@Tr("Folder")
                             <select class="input" @bind="_folderId" disabled="@(Locked || SelectedAccount?.IsUnlocked != true)">
-                                <option value="">Kein Ordner (nur für mich)</option>
+                                <option value="">@Tr("No folder (only for me)")</option>
                                 @foreach (var (id, path) in Folders())
                                 {
                                     <option value="@id">@path</option>
@@ -68,30 +68,29 @@
                     </div>
                     @if (SelectedAccount is { IsUnlocked: false } locked)
                     {
-                        <div><button type="button" class="btn btn-sm" @onclick="() => UnlockDialog.ShowAsync(Dialogs, locked)"><Icon Name="locked" Size="14" />Konto entsperren</button></div>
+                        <div><button type="button" class="btn btn-sm" @onclick="() => UnlockDialog.ShowAsync(Dialogs, locked)"><Icon Name="locked" Size="14" />@Tr("Unlock account")</button></div>
                     }
                     <p class="muted" style="margin:0; font-size:12px; line-height:1.5">
-                        Die Ressource erhält die Freigaben des Ordners. Gespeichert werden <span class="mono">@($"ssh://{KeyUser}@{_host ?? "host"}")</span>,
-                        <span class="mono">ssh_private_key</span>, <span class="mono">ssh_public_key</span> und <span class="mono">ssh_host_key</span>.
+                        @Tr("The resource inherits the folder's shares. It stores") <span class="mono">@($"ssh://{KeyUser}@{_host ?? "host"}")</span>,
+                        <span class="mono">ssh_private_key</span>, <span class="mono">ssh_public_key</span> @Tr("and") <span class="mono">ssh_host_key</span>.
                     </p>
                 </section>
 
                 <section class="card" aria-labelledby="p-opt">
-                    <h2 id="p-opt">Schlüssel &amp; Absicherung</h2>
+                    <h2 id="p-opt">@Tr("Key & hardening")</h2>
                     <fieldset style="margin:0; padding:0; border:0; display:flex; flex-direction:column; gap:8px">
-                        <legend style="font-size:12px; color:var(--text-2); margin-bottom:8px">Schlüssel einrichten für</legend>
+                        <legend style="font-size:12px; color:var(--text-2); margin-bottom:8px">@Tr("Set up key for")</legend>
                         <label style="@OptionStyle(_keyForRoot)"><input type="radio" name="keyuser" checked="@_keyForRoot" @onchange="() => _keyForRoot = true" disabled="@Locked" style="accent-color:#F2B84B; margin-top:2px" />
-                            <span><span style="font-weight:500">root</span><br /><span class="muted" style="font-size:12px">Schlüssel in /root/.ssh/authorized_keys, Root-Login nur per Schlüssel (PermitRootLogin prohibit-password). Braucht root oder sudo.</span></span></label>
+                            <span><span style="font-weight:500">root</span><br /><span class="muted" style="font-size:12px">@Tr("Key in /root/.ssh/authorized_keys, root login by key only (PermitRootLogin prohibit-password). Requires root or sudo.")</span></span></label>
                         <label style="@OptionStyle(!_keyForRoot)"><input type="radio" name="keyuser" checked="@(!_keyForRoot)" @onchange="() => _keyForRoot = false" disabled="@Locked" style="accent-color:#F2B84B; margin-top:2px" />
-                            <span><span style="font-weight:500">Anmeldebenutzer @(string.IsNullOrWhiteSpace(_user) ? "" : $"({_user})")</span><br /><span class="muted" style="font-size:12px">Schlüssel für den oben angegebenen Benutzer; sein Passwort bleibt in Passbolt (z. B. für sudo).</span></span></label>
+                            <span><span style="font-weight:500">@Tr("Login user") @(string.IsNullOrWhiteSpace(_user) ? "" : $"({_user})")</span><br /><span class="muted" style="font-size:12px">@Tr("Key for the user entered above; their password stays in Passbolt (e.g. for sudo).")</span></span></label>
                     </fieldset>
                     <label style="display:flex; align-items:flex-start; gap:10px; font-size:13px">
                         <input type="checkbox" @bind="_disablePassword" disabled="@Locked" style="accent-color:#F2B84B; margin-top:3px" />
-                        <span><span style="font-weight:500">Passwort-Login danach deaktivieren</span><br />
+                        <span><span style="font-weight:500">@Tr("Disable password login afterwards")</span><br />
                             <span class="muted" style="font-size:12px; line-height:1.5">
-                                Schreibt <span class="mono">/etc/ssh/sshd_config.d/@HostProvisioner.ConfigFileName</span>, prüft mit <span class="mono">sshd -t</span>
-                                und lädt sshd neu – erst nachdem der Schlüssel funktioniert und in Passbolt liegt. Bricht der Schlüssel-Login danach,
-                                wird die Änderung automatisch zurückgenommen. Ein Konsolenzugang als Rückfallebene ist trotzdem empfehlenswert.
+                                @Tr("Writes") <span class="mono">/etc/ssh/sshd_config.d/@HostProvisioner.ConfigFileName</span>@Tr(", validates it with") <span class="mono">sshd -t</span>
+                                @Tr("and reloads sshd – only after the key works and is stored in Passbolt. If key login breaks afterwards, the change is rolled back automatically. Console access as a fallback is still recommended.")
                             </span></span>
                     </label>
                 </section>
@@ -99,7 +98,7 @@
 
             <aside class="col-side" style="display:flex; flex-direction:column; gap:16px">
                 <section class="card" aria-labelledby="p-flow" aria-live="polite">
-                    <h2 id="p-flow">Ablauf</h2>
+                    <h2 id="p-flow">@Tr("Steps")</h2>
                     <ol style="margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:12px; font-size:13px; line-height:1.45">
                         @foreach (var (step, index) in Steps().Select((s, i) => (s, i)))
                         {
@@ -107,7 +106,7 @@
                                 <span style="flex:none; width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; @StepBadge(step.Status)">
                                     @if (step.Status == StepStatus.Running)
                                     {
-                                        <span class="spinner" style="width:14px; height:14px; border-width:2px" aria-label="läuft"></span>
+                                        <span class="spinner" style="width:14px; height:14px; border-width:2px" aria-label="@Tr("running")"></span>
                                     }
                                     else
                                     {
@@ -129,20 +128,20 @@
                 @if (_error is not null)
                 {
                     <div class="card" role="alert" style="border-color:#5A2626; background:#1C1213; gap:8px">
-                        <h2 style="font-size:14px">Provisionierung abgebrochen</h2>
+                        <h2 style="font-size:14px">@Tr("Provisioning aborted")</h2>
                         <p style="margin:0; font-size:13px; color:#FFB4AB; line-height:1.5">@_error</p>
                         @if (_rolledBack)
                         {
-                            <p class="muted" style="margin:0; font-size:12px">Bereits vorgenommene Änderungen am Server wurden zurückgenommen.</p>
+                            <p class="muted" style="margin:0; font-size:12px">@Tr("Changes already made on the server have been rolled back.")</p>
                         }
                     </div>
                 }
                 @if (_result is not null)
                 {
                     <div class="card" role="status" style="border-color:#1F4A33; background:#0F1C15; gap:8px">
-                        <h2 style="font-size:14px; color:#7EE2A8">Host provisioniert</h2>
+                        <h2 style="font-size:14px; color:#7EE2A8">@Tr("Host provisioned")</h2>
                         <p style="margin:0; font-size:13px; line-height:1.5">
-                            <span class="mono">@($"{_result.Value.Spec.Username}@{_result.Value.Spec.Target.HostAndPort}")</span> ist in Passbolt gespeichert.
+                            <span class="mono">@($"{_result.Value.Spec.Username}@{_result.Value.Spec.Target.HostAndPort}")</span> @Tr("is stored in Passbolt.")
                         </p>
                         @if (_result.Value.Warning is not null)
                         {
@@ -154,7 +153,7 @@
                 @if (_result is null)
                 {
                     <button type="submit" class="btn btn-primary btn-lg" disabled="@(_running || !CanRun)">
-                        @(_running ? "Provisioniere …" : _error is null ? "Provisionieren" : "Erneut versuchen")
+                        @(_running ? Tr("Provisioning …") : _error is null ? Tr("Provision") : Tr("Try again"))
                     </button>
                     @if (!_running && !CanRun)
                     {
@@ -164,8 +163,8 @@
                 else
                 {
                     <div style="display:flex; gap:10px">
-                        <button type="button" class="btn btn-lg" style="flex:1" @onclick="Reset">Weiteren Host</button>
-                        <button type="button" class="btn btn-primary btn-lg" style="flex:2" @onclick="Connect">Verbinden</button>
+                        <button type="button" class="btn btn-lg" style="flex:1" @onclick="Reset">@Tr("Another host")</button>
+                        <button type="button" class="btn btn-primary btn-lg" style="flex:2" @onclick="Connect">@Tr("Connect")</button>
                     </div>
                 }
             </aside>
@@ -201,7 +200,7 @@
         && !string.IsNullOrEmpty(_password) && _port is > 0 and <= 65535 && SelectedAccount?.IsUnlocked == true;
 
     private string MissingHint =>
-        SelectedAccount?.IsUnlocked != true ? "Das gewählte Passbolt-Konto ist gesperrt." : "Bitte Name, Host, Benutzer und Passwort angeben.";
+        SelectedAccount?.IsUnlocked != true ? Tr("The selected Passbolt account is locked.") : Tr("Please enter name, host, user and password.");
 
     protected override void OnInitialized()
     {
@@ -263,11 +262,11 @@
         {
             _error = ex switch
             {
-                HostKeyRejectedException => "Der Host-Key wurde nicht bestätigt.",
+                HostKeyRejectedException => Tr("The host key was not confirmed."),
                 Renci.SshNet.Common.SshAuthenticationException =>
-                    "Anmeldung fehlgeschlagen: Benutzer oder Passwort falsch, oder der Server erlaubt keinen Passwort-Login.",
-                System.Net.Sockets.SocketException se => $"Server nicht erreichbar ({se.SocketErrorCode}).",
-                Renci.SshNet.Common.SshOperationTimeoutException => "Zeitüberschreitung beim Verbinden.",
+                    Tr("Sign-in failed: wrong user or password, or the server does not allow password login."),
+                System.Net.Sockets.SocketException se => Tr("Server unreachable ({0}).", se.SocketErrorCode),
+                Renci.SshNet.Common.SshOperationTimeoutException => Tr("Connection timed out."),
                 _ => ex.Message,
             };
             _rolledBack = _provisioner.Steps.Any(s => s.Kind == ProvisionStepKind.InstallKey && s.Status == StepStatus.Done);
@@ -311,10 +310,10 @@
 
     private static string StepLabel(StepStatus status) => status switch
     {
-        StepStatus.Done => "erledigt",
-        StepStatus.Failed => "fehlgeschlagen",
-        StepStatus.Skipped => "übersprungen",
-        _ => "offen",
+        StepStatus.Done => Tr("done"),
+        StepStatus.Failed => Tr("failed"),
+        StepStatus.Skipped => Tr("skipped"),
+        _ => Tr("pending"),
     };
 
     private static string StepBadge(StepStatus status) => status switch

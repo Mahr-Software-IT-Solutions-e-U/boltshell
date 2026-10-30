@@ -1,0 +1,9 @@
+{
+  "Direct connection without a Passbolt resource. The password is only kept in memory for this session.": "Direkte Verbindung ohne Passbolt-Ressource. Das Passwort wird nur für diese Sitzung im Speicher gehalten.",
+  "User": "Benutzer",
+  "Password": "Passwort",
+  "Cancel": "Abbrechen",
+  "Connect": "Verbinden",
+  "Please enter host, port and user.": "Bitte Host, Port und Benutzer angeben.",
+  "Quick connect": "Schnellverbindung"
+}

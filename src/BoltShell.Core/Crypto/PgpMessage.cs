@@ -2,6 +2,7 @@ using System.Text;
 using Org.BouncyCastle.Bcpg;
 using Org.BouncyCastle.Bcpg.OpenPgp;
 using Org.BouncyCastle.Security;
+using static BoltShell.Core.Localization.Texts;
 
 namespace BoltShell.Core.Crypto;
 
@@ -52,7 +53,7 @@ public static class PgpMessage
         var factory = new PgpObjectFactory(input);
         var obj = factory.NextPgpObject();
         var encList = obj as PgpEncryptedDataList ?? factory.NextPgpObject() as PgpEncryptedDataList
-                      ?? throw new PgpException("Not an encrypted OpenPGP message.");
+                      ?? throw new PgpException(Tr("Not an encrypted OpenPGP message."));
 
         PgpPublicKeyEncryptedData? encrypted = null;
         PgpPrivateKey? privateKey = null;
@@ -66,7 +67,7 @@ public static class PgpMessage
             }
         }
         if (encrypted is null || privateKey is null)
-            throw new PgpException("Message is not encrypted for any available key.");
+            throw new PgpException(Tr("Message is not encrypted for any available key."));
 
         using var clear = encrypted.GetDataStream(privateKey);
         var plainFactory = new PgpObjectFactory(clear);
@@ -86,7 +87,7 @@ public static class PgpMessage
         }
 
         if (message is not PgpLiteralData literal)
-            throw new PgpException($"Unexpected OpenPGP packet {message?.GetType().Name}.");
+            throw new PgpException(Tr("Unexpected OpenPGP packet {0}.", message?.GetType().Name));
 
         byte[] data;
         using (var ms = new MemoryStream())
@@ -98,19 +99,19 @@ public static class PgpMessage
         if (verifyWith is not null)
         {
             if (onePass is null)
-                throw new PgpException("Message is not signed.");
+                throw new PgpException(Tr("Message is not signed."));
             var signerKey = verifyWith.FindKey(onePass.KeyId)
-                            ?? throw new PgpException("Message was signed by an unexpected key.");
+                            ?? throw new PgpException(Tr("Message was signed by an unexpected key."));
             onePass.InitVerify(signerKey);
             onePass.Update(data);
             if (plainFactory.NextPgpObject() is not PgpSignatureList sigs || !onePass.Verify(sigs[0]))
-                throw new PgpException("Invalid message signature.");
+                throw new PgpException(Tr("Invalid message signature."));
         }
 
         // The MDC can only be checked once the whole decrypted stream has been consumed.
         clear.CopyTo(Stream.Null);
         if (encrypted.IsIntegrityProtected() && !encrypted.Verify())
-            throw new PgpException("Message integrity check failed.");
+            throw new PgpException(Tr("Message integrity check failed."));
 
         return Encoding.UTF8.GetString(data);
     }

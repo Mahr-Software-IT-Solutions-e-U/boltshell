@@ -1,0 +1,11 @@
+{
+  "Resource '{0}' has no ssh:// URI.": "Ressource „{0}“ hat keine ssh://-URI.",
+  "Resource '{0}' has no username.": "Ressource „{0}“ hat keinen Benutzernamen.",
+  "Unrecognised entry in {0}: '{1}'.": "Unbekannter Eintrag in {0}: „{1}“.",
+  "Invalid base64 in {0}: '{1}'.": "Ungültiges Base64 in {0}: „{1}“.",
+  "The passphrase for the SSH private key is wrong.": "Die Passphrase für den privaten SSH-Schlüssel ist falsch.",
+  "The SSH private key needs a passphrase.": "Der private SSH-Schlüssel benötigt eine Passphrase.",
+  "The host key of {0} (SHA256:{1}) does not match the host identity stored in Passbolt ({2}). Connection refused to protect against man-in-the-middle attacks. If the server was reinstalled, update the resource in Passbolt.": "Der Host-Key von {0} (SHA256:{1}) stimmt nicht mit der in Passbolt hinterlegten Host-Identität ({2}) überein. Verbindung zum Schutz vor Man-in-the-Middle-Angriffen abgelehnt. Wurde der Server neu installiert, bitte die Ressource in Passbolt aktualisieren.",
+  "The host key of {0} was not accepted.": "Der Host-Key von {0} wurde nicht akzeptiert.",
+  "No password or private key available for '{0}'.": "Für „{0}“ ist weder ein Passwort noch ein privater Schlüssel verfügbar."
+}

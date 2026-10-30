@@ -54,7 +54,7 @@ internal static class Program
 #endif
 
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
-            app.MainWindow.ShowMessage("Unerwarteter Fehler", e.ExceptionObject.ToString() ?? "Unknown error");
+            app.MainWindow.ShowMessage(BoltShell.Core.Localization.Texts.Tr("Unexpected error"), e.ExceptionObject.ToString() ?? "Unknown error");
 
         app.Run();
 

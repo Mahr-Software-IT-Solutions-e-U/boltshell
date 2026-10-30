@@ -13,20 +13,20 @@
         <div class="identity-text">
             @if (identity.Mismatch)
             {
-                <b>Server-Identität weicht von Passbolt ab – Verbindung abgelehnt.</b>
+                <b>@Tr("Server identity differs from Passbolt – connection refused.")</b>
                 <span>
-                    Der Server meldet <span class="mono">SHA256:@identity.Presented</span>, in Passbolt
-                    (<span class="mono">@identity.Field</span>) steht <span class="mono">@string.Join(", ", identity.Expected.Select(f => "SHA256:" + f))</span>.
-                    Das kann ein Angriff (Man-in-the-Middle) sein. Nur aktualisieren, wenn der Server bekanntermaßen neu aufgesetzt wurde
-                    oder ein neues Zertifikat bekommen hat – am besten den Fingerprint vorher direkt am Server prüfen.
+                    @Tr("The server presents {0}, Passbolt ({1}) expects {2}.", "SHA256:" + identity.Presented, identity.Field,
+                        string.Join(", ", identity.Expected.Select(f => "SHA256:" + f)))
+                    @Tr("This may be an attack (man-in-the-middle). Only update it if the server is known to have been reinstalled or received a new certificate – ideally verify the fingerprint directly on the server first.")
                 </span>
             }
             else
             {
-                <b>Host-Identität nicht in Passbolt hinterlegt.</b>
+                <b>@Tr("Host identity is not stored in Passbolt.")</b>
                 <span>
-                    @(identity.IsRdp ? "Das Zertifikat" : "Der Host-Key") <span class="mono">SHA256:@identity.Presented</span> wird nur lokal
-                    auf diesem Rechner geprüft. In Passbolt hinterlegt (<span class="mono">@identity.Field</span>) prüft ihn jeder im Team.
+                    @(identity.IsRdp
+                        ? Tr("The certificate {0} is only checked locally on this computer. Stored in Passbolt ({1}), everyone on the team checks it.", "SHA256:" + identity.Presented, identity.Field)
+                        : Tr("The host key {0} is only checked locally on this computer. Stored in Passbolt ({1}), everyone on the team checks it.", "SHA256:" + identity.Presented, identity.Field))
                 </span>
             }
         </div>
@@ -34,12 +34,12 @@
             @if (CanStore)
             {
                 <button type="button" class="btn btn-sm @(identity.Mismatch ? "" : "btn-primary")" disabled="@_saving" @onclick="() => StoreAsync(identity)">
-                    @(_saving ? "Speichere …" : identity.Mismatch ? "In Passbolt aktualisieren …" : "In Passbolt hinterlegen")
+                    @(_saving ? Tr("Saving …") : identity.Mismatch ? Tr("Update in Passbolt …") : Tr("Store in Passbolt"))
                 </button>
             }
             @if (!identity.Mismatch)
             {
-                <button type="button" class="btn btn-sm" @onclick="Dismiss">Ausblenden</button>
+                <button type="button" class="btn btn-sm" @onclick="Dismiss">@Tr("Dismiss")</button>
             }
         </div>
     </div>
@@ -91,18 +91,18 @@
     {
         if (Accounts.Find(Tab.AccountId!) is not { } account)
         {
-            Snackbar.Add("Das Passbolt-Konto dieser Sitzung wurde entfernt.", Severity.Warning);
+            Snackbar.Add(Tr("The Passbolt account of this session was removed."), Severity.Warning);
             return;
         }
-        if (identity.Mismatch && !await TextPromptDialog.ConfirmAsync(Dialogs, "Host-Identität ersetzen?",
-                $"Der Eintrag {identity.Field} in Passbolt wird durch SHA256:{identity.Presented} ersetzt – für alle, die diese Ressource nutzen. " +
-                "Nur bestätigen, wenn du sicher bist, dass sich der Server geändert hat und kein Angriff vorliegt.", "Ersetzen"))
+        if (identity.Mismatch && !await TextPromptDialog.ConfirmAsync(Dialogs, Tr("Replace host identity?"),
+                Tr("The entry {0} in Passbolt will be replaced by {1} – for everyone using this resource. Only confirm if you are sure the server has changed and this is not an attack.",
+                    identity.Field, "SHA256:" + identity.Presented), Tr("Replace")))
             return;
         if (!await UnlockDialog.ShowAsync(Dialogs, account))
             return;
         if (account.Resources.FirstOrDefault(r => r.Id == Tab.ResourceId) is not { } resource)
         {
-            Snackbar.Add("Die Ressource ist in Passbolt nicht mehr vorhanden.", Severity.Warning);
+            Snackbar.Add(Tr("The resource no longer exists in Passbolt."), Severity.Warning);
             return;
         }
 
@@ -115,12 +115,12 @@
             else
                 State.UpdateHostIdentity(account.Id, resource.Id, SshConnectionMapper.ParseHostKeys(identity.Value), null, RdpProxy);
             Snackbar.Add(identity.Mismatch
-                ? $"{identity.Field} in Passbolt aktualisiert – bitte neu verbinden."
-                : $"{identity.Field} in Passbolt hinterlegt. Die Identität wird ab jetzt gegen Passbolt geprüft.", Severity.Success);
+                ? Tr("{0} updated in Passbolt – please reconnect.", identity.Field)
+                : Tr("{0} stored in Passbolt. The identity is now checked against Passbolt.", identity.Field), Severity.Success);
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Speichern in Passbolt fehlgeschlagen: {ex.Message}", Severity.Error);
+            Snackbar.Add(Tr("Saving to Passbolt failed: {0}", ex.Message), Severity.Error);
         }
         finally
         {

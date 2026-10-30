@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using BoltShell.Core.Config;
+using static BoltShell.Core.Localization.Texts;
 
 namespace BoltShell.Core.Accounts;
 
@@ -44,7 +45,7 @@ public sealed class AccountManager : IDisposable
         Passbolt.PassboltAccount.ValidateServerUrl(account.BaseUrl);
         if (Accounts.Any(a => a.Config.Account.BaseUrl.Equals(account.BaseUrl, StringComparison.OrdinalIgnoreCase)
                               && a.Config.Account.UserId == account.UserId))
-            throw new InvalidOperationException("This Passbolt account is already configured.");
+            throw new InvalidOperationException(Tr("This Passbolt account is already configured."));
 
         var config = new AccountConfig
         {

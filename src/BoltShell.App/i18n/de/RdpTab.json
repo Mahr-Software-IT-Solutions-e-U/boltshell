@@ -1,0 +1,18 @@
+{
+  "Session ended": "Sitzung beendet",
+  "Connection failed": "Verbindung fehlgeschlagen",
+  "Reconnect": "Neu verbinden",
+  "Connecting": "Verbinde",
+  "Connecting to {0} …": "Verbinde mit {0} …",
+  "The Passbolt account is locked – unlock it to connect.": "Das Passbolt-Konto ist gesperrt – zum Verbinden bitte entsperren.",
+  "Sign-in failed: user, domain or password is wrong.": "Anmeldung fehlgeschlagen: Benutzer, Domäne oder Passwort sind falsch.",
+  "Access denied.": "Zugriff verweigert.",
+  "The server rejected the requested security protocol (check the server's NLA/TLS settings).": "Der Server hat das angeforderte Sicherheitsprotokoll abgelehnt (NLA/TLS-Einstellung des Servers prüfen).",
+  "The server certificate was not confirmed or does not match rdp_cert_sha256 in Passbolt (details above).": "Das Zertifikat des Servers wurde nicht bestätigt oder passt nicht zu rdp_cert_sha256 in Passbolt (Details oberhalb).",
+  "The local RDP proxy refused the connection.": "Der lokale RDP-Vermittler hat die Verbindung abgelehnt.",
+  "The RDP server is not reachable (socket error {0}).": "Der RDP-Server ist nicht erreichbar (Socket-Fehler {0}).",
+  "TLS handshake with the server failed (alert {0}).": "TLS-Handshake mit dem Server fehlgeschlagen (Alert {0}).",
+  "The RDP proxy could not establish the connection.": "Der RDP-Vermittler konnte die Verbindung nicht aufbauen.",
+  "Details in the log: {0}": "Details im Log: {0}",
+  "General error": "Allgemeiner Fehler"
+}

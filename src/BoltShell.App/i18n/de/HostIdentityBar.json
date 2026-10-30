@@ -1,0 +1,20 @@
+{
+  "Server identity differs from Passbolt – connection refused.": "Server-Identität weicht von Passbolt ab – Verbindung abgelehnt.",
+  "The server presents {0}, Passbolt ({1}) expects {2}.": "Der Server meldet {0}, in Passbolt ({1}) steht {2}.",
+  "This may be an attack (man-in-the-middle). Only update it if the server is known to have been reinstalled or received a new certificate – ideally verify the fingerprint directly on the server first.": "Das kann ein Angriff (Man-in-the-Middle) sein. Nur aktualisieren, wenn der Server bekanntermaßen neu aufgesetzt wurde oder ein neues Zertifikat bekommen hat – am besten den Fingerprint vorher direkt am Server prüfen.",
+  "Host identity is not stored in Passbolt.": "Host-Identität nicht in Passbolt hinterlegt.",
+  "The certificate {0} is only checked locally on this computer. Stored in Passbolt ({1}), everyone on the team checks it.": "Das Zertifikat {0} wird nur lokal auf diesem Rechner geprüft. In Passbolt hinterlegt ({1}) prüft es jeder im Team.",
+  "The host key {0} is only checked locally on this computer. Stored in Passbolt ({1}), everyone on the team checks it.": "Der Host-Key {0} wird nur lokal auf diesem Rechner geprüft. In Passbolt hinterlegt ({1}) prüft ihn jeder im Team.",
+  "Saving …": "Speichere …",
+  "Update in Passbolt …": "In Passbolt aktualisieren …",
+  "Store in Passbolt": "In Passbolt hinterlegen",
+  "Dismiss": "Ausblenden",
+  "The Passbolt account of this session was removed.": "Das Passbolt-Konto dieser Sitzung wurde entfernt.",
+  "Replace host identity?": "Host-Identität ersetzen?",
+  "The entry {0} in Passbolt will be replaced by {1} – for everyone using this resource. Only confirm if you are sure the server has changed and this is not an attack.": "Der Eintrag {0} in Passbolt wird durch {1} ersetzt – für alle, die diese Ressource nutzen. Nur bestätigen, wenn du sicher bist, dass sich der Server geändert hat und kein Angriff vorliegt.",
+  "Replace": "Ersetzen",
+  "The resource no longer exists in Passbolt.": "Die Ressource ist in Passbolt nicht mehr vorhanden.",
+  "{0} updated in Passbolt – please reconnect.": "{0} in Passbolt aktualisiert – bitte neu verbinden.",
+  "{0} stored in Passbolt. The identity is now checked against Passbolt.": "{0} in Passbolt hinterlegt. Die Identität wird ab jetzt gegen Passbolt geprüft.",
+  "Saving to Passbolt failed: {0}": "Speichern in Passbolt fehlgeschlagen: {0}"
+}
