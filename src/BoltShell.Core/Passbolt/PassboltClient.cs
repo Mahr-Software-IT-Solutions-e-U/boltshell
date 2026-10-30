@@ -280,7 +280,11 @@ public sealed class PassboltClient : IDisposable
     /// otherwise replaces its value. The value is stored in the secret like the Passbolt extension does, so the secret is
     /// re-encrypted for every user with access; the metadata keeps its key (shared or personal).
     /// </summary>
-    public async Task SetCustomFieldAsync(string resourceId, string key, string value, CancellationToken ct = default)
+    public Task SetCustomFieldAsync(string resourceId, string key, string value, CancellationToken ct = default) =>
+        UpdateCustomFieldAsync(resourceId, key, _ => value, ct);
+
+    /// <summary>Like <see cref="SetCustomFieldAsync"/>, but computes the new value from the current one (null if the field is missing).</summary>
+    public async Task UpdateCustomFieldAsync(string resourceId, string key, Func<string?, string> update, CancellationToken ct = default)
     {
         var keys = RequireKeys();
         if (!_metadataKeysLoaded)
@@ -299,7 +303,7 @@ public sealed class PassboltClient : IDisposable
         if (JsonNode.Parse(secretPlaintext) is not JsonObject secret)
             throw new PassboltApiException(Tr("The resource's secret is not a v5 secret object."));
 
-        ApplyCustomField(metadata, secret, key, value);
+        ApplyCustomField(metadata, secret, key, update);
 
         PgpPublicKeys metadataRecipient;
         if (metadataKeyType == "shared_key")
@@ -336,7 +340,7 @@ public sealed class PassboltClient : IDisposable
     }
 
     /// <summary>Adds or replaces custom field <paramref name="key"/> in decrypted v5 metadata and secret objects.</summary>
-    internal static void ApplyCustomField(JsonObject metadata, JsonObject secret, string key, string value)
+    internal static void ApplyCustomField(JsonObject metadata, JsonObject secret, string key, Func<string?, string> update)
     {
         if (metadata["custom_fields"] is not JsonArray metaFields)
             metadata["custom_fields"] = metaFields = new JsonArray();
@@ -346,6 +350,7 @@ public sealed class PassboltClient : IDisposable
         var existing = metaFields.OfType<JsonObject>()
             .FirstOrDefault(f => string.Equals(f["metadata_key"]?.GetValue<string>()?.Trim(), key, StringComparison.OrdinalIgnoreCase));
         string id;
+        string? current = null;
         if (existing is null)
         {
             id = Guid.NewGuid().ToString();
@@ -354,10 +359,14 @@ public sealed class PassboltClient : IDisposable
         else
         {
             id = existing["id"]!.GetValue<string>();
+            current = (existing["metadata_value"] as JsonValue)?.ToString();
             existing.Remove("metadata_value"); // the secret value is authoritative
         }
 
         var secretField = secretFields.OfType<JsonObject>().FirstOrDefault(f => f["id"]?.GetValue<string>() == id);
+        if ((secretField?["secret_value"] as JsonValue)?.ToString() is { Length: > 0 } secretValue)
+            current = secretValue;
+        var value = update(string.IsNullOrEmpty(current) ? null : current);
         if (secretField is null)
             secretFields.Add(new JsonObject { ["id"] = id, ["type"] = existing?["type"]?.GetValue<string>() ?? "text", ["secret_value"] = value });
         else

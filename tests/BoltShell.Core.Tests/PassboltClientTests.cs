@@ -164,6 +164,25 @@ public class PassboltClientTests
     }
 
     [Fact]
+    public async Task UpdateCustomField_SeesTheCurrentValue_SoOtherHostsEntriesStay()
+    {
+        var server = new FakePassboltServer();
+        using var client = new PassboltClient(Account(), server);
+        await client.LoginAsync(TestKeys.UserPassphrase);
+        var (id, _) = await client.CreateResourceAsync(new NewResource("cluster", "root", ["ssh://a.example.com", "ssh://b.example.com"], "pw", null,
+            [new("ssh_host_key", "a.example.com SHA256:aaa")]));
+
+        string? seen = null;
+        await client.UpdateCustomFieldAsync(id, "ssh_host_key", current => { seen = current; return current + "\nb.example.com SHA256:bbb"; });
+
+        Assert.Equal("a.example.com SHA256:aaa", seen);
+        var resource = (await client.GetResourcesAsync()).Single(r => r.Id == id);
+        var secret = await client.GetSecretAsync(resource);
+        Assert.Equal("bbb", Assert.Single(Ssh.SshConnectionMapper.Map(resource, secret, "ssh://b.example.com").HostKeys!).FingerprintSha256);
+        Assert.Equal("aaa", Assert.Single(Ssh.SshConnectionMapper.Map(resource, secret, "ssh://a.example.com").HostKeys!).FingerprintSha256);
+    }
+
+    [Fact]
     public async Task SetCustomField_OnV4Resource_ExplainsWhy()
     {
         using var client = new PassboltClient(Account(), new FakePassboltServer());

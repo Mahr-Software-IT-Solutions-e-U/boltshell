@@ -57,6 +57,21 @@ public sealed class AccountLockTests : IAsyncDisposable
         Assert.Equal(tab.Rdp.Id, _proxy.Update(tab.Rdp, tab.Rdp.Spec).Id);
     }
 
+    [Fact]
+    public void StoredHostIdentity_OnlyAffectsTabsOfThatHost()
+    {
+        var spec = new SshConnectionSpec("cluster", new SshTarget("127.0.0.1", 1), "root", new SshCredentials("secret", null, null));
+        var hostA = _state.Open(_sessions, spec, "acc-1", "res-1", "ssh://a.example.com");
+        var hostB = _state.Open(_sessions, spec, "acc-1", "res-1", "ssh://b.example.com");
+        var keys = new[] { new ExpectedHostKey("ssh-ed25519", "abc") };
+
+        _state.UpdateHostIdentity("acc-1", "res-1", "ssh://b.example.com", keys, null, _proxy);
+
+        Assert.False(hostA.Spec!.HasPinnedHostKeys);
+        Assert.Equal(keys, hostB.Spec!.HostKeys);
+        Assert.Equal(keys, hostB.Terminal!.Spec.HostKeys);
+    }
+
     public async ValueTask DisposeAsync()
     {
         await _sessions.DisposeAsync();

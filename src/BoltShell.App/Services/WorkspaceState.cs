@@ -18,6 +18,13 @@ public sealed partial class SessionTab
     public string? AccountId { get; init; }
     public string? ResourceId { get; init; }
 
+    /// <summary>The URI of the resource this tab connects to (a resource can hold several hosts); null for its first one.</summary>
+    public string? HostUri { get; init; }
+
+    /// <summary>True if this tab belongs to the given host of a resource.</summary>
+    public bool Is(string accountId, string resourceId, string? hostUri) =>
+        AccountId == accountId && ResourceId == resourceId && (HostUri is null || hostUri is null || HostUri == hostUri);
+
     // SSH
     public SshConnectionSpec? Spec { get; internal set; }
     public SshTerminalSession? Terminal { get; init; }
@@ -83,7 +90,7 @@ public sealed class WorkspaceState
     public event Action? Changed;
 
     /// <summary>Opens a new RDP tab and makes it active. The tab connects when it is rendered.</summary>
-    public SessionTab OpenRdp(RdpProxy proxy, RdpConnectionSpec spec, string? accountId, string? resourceId)
+    public SessionTab OpenRdp(RdpProxy proxy, RdpConnectionSpec spec, string? accountId, string? resourceId, string? hostUri = null)
     {
         var count = _tabs.Count(t => Equals(t.TargetKey, spec.Target));
         var tab = new SessionTab
@@ -92,6 +99,7 @@ public sealed class WorkspaceState
             Rdp = proxy.Register(spec),
             AccountId = accountId,
             ResourceId = resourceId,
+            HostUri = hostUri,
         };
         _tabs.Add(tab);
         Active = tab;
@@ -100,7 +108,7 @@ public sealed class WorkspaceState
     }
 
     /// <summary>Opens a new terminal tab for <paramref name="spec"/> and makes it active.</summary>
-    public SessionTab Open(SessionManager sessions, SshConnectionSpec spec, string? accountId, string? resourceId)
+    public SessionTab Open(SessionManager sessions, SshConnectionSpec spec, string? accountId, string? resourceId, string? hostUri = null)
     {
         var count = _tabs.Count(t => Equals(t.TargetKey, spec.Target));
         var tab = new SessionTab
@@ -110,6 +118,7 @@ public sealed class WorkspaceState
             Terminal = sessions.CreateTerminal(spec),
             AccountId = accountId,
             ResourceId = resourceId,
+            HostUri = hostUri,
         };
         tab.Terminal.StateChanged += _ => Notify();
         _tabs.Add(tab);
@@ -157,12 +166,12 @@ public sealed class WorkspaceState
     }
 
     /// <summary>
-    /// Applies a host identity just stored in Passbolt to all tabs of that resource (used from their next connect on).
+    /// Applies a host identity just stored in Passbolt to all tabs of that host (used from their next connect on).
     /// </summary>
-    public void UpdateHostIdentity(string accountId, string resourceId, IReadOnlyList<ExpectedHostKey>? hostKeys,
+    public void UpdateHostIdentity(string accountId, string resourceId, string? hostUri, IReadOnlyList<ExpectedHostKey>? hostKeys,
         IReadOnlyList<string>? certificateFingerprints, RdpProxy proxy)
     {
-        foreach (var tab in _tabs.Where(t => t.AccountId == accountId && t.ResourceId == resourceId))
+        foreach (var tab in _tabs.Where(t => t.Is(accountId, resourceId, hostUri)))
         {
             if (hostKeys is not null && tab.Spec is { } spec)
             {

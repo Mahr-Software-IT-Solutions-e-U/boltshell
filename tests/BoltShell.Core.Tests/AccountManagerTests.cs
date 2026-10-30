@@ -40,7 +40,7 @@ public sealed class AccountManagerTests : IDisposable
 
         Assert.True(account.IsUnlocked);
         Assert.Equal(["legacy", "modern"], account.Resources.Select(r => r.Name));
-        Assert.Equal(["legacy"], account.Hosts.Select(r => r.Name)); // only ssh:// URIs
+        Assert.Equal(["legacy"], account.Hosts.Select(h => h.Resource.Name)); // only ssh:// URIs
         Assert.True(changes > 0);
 
         // The server key fingerprint is pinned and persisted on first unlock.
@@ -55,7 +55,7 @@ public sealed class AccountManagerTests : IDisposable
 
         // Metadata stays visible while locked; secrets need an unlock.
         Assert.Single(account.Hosts);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => account.GetConnectionSpecAsync(account.Hosts.Single()));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => account.GetConnectionSpecAsync(account.Hosts.Single().Resource));
     }
 
     [Fact]
