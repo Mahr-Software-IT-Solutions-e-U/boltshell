@@ -38,6 +38,25 @@ public class MultiHostTests
     }
 
     [Fact]
+    public void UriFragment_NamesTheHost_AndIsIgnoredForTheConnection()
+    {
+        var resource = Resource("ssh://10.0.0.11#node-1", "ssh://10.0.0.12:2222#Node%202", "rdp://10.0.0.20#", "ssh://10.0.0.13");
+        var hosts = HostEntry.For(resource);
+
+        Assert.Equal(["cluster · node-1", "cluster · Node 2", "cluster (10.0.0.20)", "cluster (10.0.0.13)"], hosts.Select(h => h.DisplayName));
+        Assert.Equal("node-1", hosts[0].Label);
+        Assert.Null(hosts[2].Label); // empty fragment
+
+        var spec = SshConnectionMapper.Map(resource, Secret(), "ssh://10.0.0.12:2222#Node%202");
+        Assert.Equal(("10.0.0.12", 2222, "cluster · Node 2"), (spec.Target.Host, spec.Target.Port, spec.DisplayName));
+        Assert.Equal("cluster · node-1", SshConnectionMapper.Map(resource, Secret()).DisplayName); // default: first URI, with its label
+        Assert.Equal("cluster (10.0.0.20)", RdpConnectionMapper.Map(resource, Secret(), "rdp://10.0.0.20#").DisplayName);
+
+        // A single-host resource with a label also shows it.
+        Assert.Equal("cluster · prod", Assert.Single(HostEntry.For(Resource("ssh://web.example.com#prod"))).DisplayName);
+    }
+
+    [Fact]
     public void Map_UsesTheChosenUri_AndNamesTheHost()
     {
         var resource = Resource("ssh://a.example.com", "ssh://deploy@b.example.com:2222");

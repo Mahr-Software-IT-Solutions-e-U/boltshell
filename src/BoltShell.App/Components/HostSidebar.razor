@@ -75,7 +75,7 @@
                         @onclick="() => OnOpen.InvokeAsync((account, host))">
                     <Icon Name="@(isRdp ? "monitor" : "server")" Color="#9AA1AC" />
                     <span style="display:flex; flex-direction:column; min-width:0; flex:1">
-                        <span class="host-name">@resource.Name</span>
+                        <span class="host-name">@(host.Label is null ? resource.Name : host.DisplayName)</span>
                         <span class="host-addr">@Address(host)</span>
                     </span>
                     @if (HasField(resource, SshConnectionMapper.HostKeyField) || HasField(resource, BoltShell.Core.Rdp.RdpConnectionMapper.CertificateField))

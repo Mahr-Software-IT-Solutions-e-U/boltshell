@@ -62,9 +62,8 @@ public static partial class SshConnectionMapper
     /// <param name="uri">The <c>ssh://</c> URI to connect to (see <see cref="Accounts.HostEntry"/>); null for the first one.</param>
     public static SshConnectionSpec Map(PassboltResource resource, PassboltSecret secret, string? uri = null)
     {
-        var target = (uri is null
-                         ? resource.Uris.Select(u => SshTarget.TryParse(u, out var t) ? t : null).FirstOrDefault(t => t is not null)
-                         : resource.Uris.Contains(uri) && SshTarget.TryParse(uri, out var chosen) ? chosen : null)
+        uri ??= resource.Uris.FirstOrDefault(u => SshTarget.TryParse(u, out _));
+        var target = (uri is not null && resource.Uris.Contains(uri) && SshTarget.TryParse(uri, out var chosen) ? chosen : null)
                      ?? throw new InvalidOperationException(Tr("Resource '{0}' has no ssh:// URI.", resource.Name));
         var shared = Accounts.HostEntry.For(resource).Count > 1;
 
@@ -96,7 +95,7 @@ public static partial class SshConnectionMapper
         else
             credentials = new SshCredentials(null, privateKey, password);
 
-        return new SshConnectionSpec(shared ? $"{resource.Name} ({target.Host})" : resource.Name, target, username,
+        return new SshConnectionSpec(Accounts.HostEntry.Name(resource.Name, uri, target.Host, shared), target, username,
             credentials with { Totp = secret.Totp }, hostKeys, publicKey);
     }
 

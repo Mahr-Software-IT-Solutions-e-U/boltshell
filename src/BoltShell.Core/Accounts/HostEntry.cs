@@ -14,10 +14,32 @@ public sealed record HostEntry(PassboltResource Resource, string Uri, bool IsRdp
     /// <summary>Unique within an account.</summary>
     public string Key => KeyFor(Resource.Id, Uri);
 
-    /// <summary>The resource name, plus the host if the resource has several.</summary>
-    public string DisplayName => SharedResource ? $"{Resource.Name} ({Host})" : Resource.Name;
+    /// <summary>Own name of this host from the URI fragment (<c>ssh://10.0.0.11#node-1</c>), if any.</summary>
+    public string? Label => LabelOf(Uri);
+
+    /// <summary>See <see cref="Name"/>.</summary>
+    public string DisplayName => Name(Resource.Name, Uri, Host, SharedResource);
 
     public static string KeyFor(string resourceId, string uri) => resourceId + "\n" + uri;
+
+    /// <summary>
+    /// "resource · label" if the URI has a fragment, otherwise "resource (host)" for a resource with several hosts,
+    /// otherwise just the resource name.
+    /// </summary>
+    public static string Name(string resourceName, string? uri, string host, bool sharedResource) =>
+        LabelOf(uri) is { } label ? $"{resourceName} · {label}"
+        : sharedResource ? $"{resourceName} ({host})"
+        : resourceName;
+
+    /// <summary>The URI fragment as a label (unescaped, trimmed), or null.</summary>
+    public static string? LabelOf(string? uri)
+    {
+        var hash = uri?.IndexOf('#') ?? -1;
+        if (hash < 0)
+            return null;
+        var label = System.Uri.UnescapeDataString(uri![(hash + 1)..]).Trim();
+        return label.Length > 0 ? label : null;
+    }
 
     /// <summary>The hosts of a resource, in URI order.</summary>
     public static IReadOnlyList<HostEntry> For(PassboltResource resource)

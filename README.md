@@ -59,6 +59,8 @@ reachable via RDP and SSH. The host identity fields then hold one entry per host
 (`host ssh-ed25519 AAAA…`, `[host]:2222 …`, wildcards and hashed entries work) or `host fingerprint` for
 `rdp_cert_sha256`. Entries without a host apply to hosts without their own entry. "Store in Passbolt" adds or
 replaces only the entry of the connected host.
+Hosts are named "resource (host)"; give a host its own name with a URI fragment, e.g. `ssh://10.0.0.11#node-1`
+→ "cluster · node-1" (BoltShell ignores the fragment when connecting).
 
 ### RDP hosts
 

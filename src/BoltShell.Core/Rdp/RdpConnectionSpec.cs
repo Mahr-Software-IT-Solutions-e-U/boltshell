@@ -78,9 +78,8 @@ public static class RdpConnectionMapper
     /// <param name="uri">The <c>rdp://</c> URI to connect to (see <see cref="Accounts.HostEntry"/>); null for the first one.</param>
     public static RdpConnectionSpec Map(PassboltResource resource, PassboltSecret secret, string? uri = null)
     {
-        var target = (uri is null
-                         ? resource.Uris.Select(u => RdpTarget.TryParse(u, out var t) ? t : null).FirstOrDefault(t => t is not null)
-                         : resource.Uris.Contains(uri) && RdpTarget.TryParse(uri, out var chosen) ? chosen : null)
+        uri ??= resource.Uris.FirstOrDefault(u => RdpTarget.TryParse(u, out _));
+        var target = (uri is not null && resource.Uris.Contains(uri) && RdpTarget.TryParse(uri, out var chosen) ? chosen : null)
                      ?? throw new InvalidOperationException(Tr("Resource '{0}' has no rdp:// URI.", resource.Name));
         var shared = Accounts.HostEntry.For(resource).Count > 1;
 
@@ -97,7 +96,7 @@ public static class RdpConnectionMapper
 
         var fingerprints = ParseFingerprints(FieldValue(CertificateField), shared ? target : null);
 
-        return new RdpConnectionSpec(shared ? $"{resource.Name} ({target.Host})" : resource.Name, target, username, domain, secret.Password, fingerprints);
+        return new RdpConnectionSpec(Accounts.HostEntry.Name(resource.Name, uri, target.Host, shared), target, username, domain, secret.Password, fingerprints);
     }
 
     /// <summary>
