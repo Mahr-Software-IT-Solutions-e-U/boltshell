@@ -357,6 +357,8 @@ public sealed class SshIntegrationTests : IClassFixture<LocalSshServer>, IDispos
         await using var manager = new SessionManager(connector);
 
         Assert.Contains("pb-slow-42", await RunEchoAsync(manager.CreateTerminal(Spec(_server.ClientKey)), "slow"));
+    }
+
     [SkippableFact]
     public async Task Vim_AcceptsTypedText_AndSaves()
     {
