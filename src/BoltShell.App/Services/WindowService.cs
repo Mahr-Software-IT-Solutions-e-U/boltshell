@@ -23,6 +23,9 @@ public sealed partial class WindowService
 
     public bool IsMaximized { get; private set; }
 
+    /// <summary>macOS shows its window buttons (traffic lights) on the left.</summary>
+    public bool IsMac => OperatingSystem.IsMacOS();
+
     public event Action? Changed;
 
     public void Attach(PhotinoWindow window, bool frameless)

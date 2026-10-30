@@ -28,7 +28,7 @@
     else
     {
         @* The workspace stays mounted while the accounts page is shown, so terminals keep running. *@
-        <div style="@(_page == Page.Workspace ? "" : "display:none")">
+        <div style="@(_page == Page.Workspace ? "height:100%" : "display:none")">
             <Workspace OnManageAccounts="() => _page = Page.Accounts" OnProvisionHost="() => _page = Page.Provision"
                        OnCreateRdpHost="() => _page = Page.CreateRdp" />
         </div>
