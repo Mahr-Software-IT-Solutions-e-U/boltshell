@@ -19,13 +19,14 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
       - name: Install OpenSSH server (integration tests start their own sshd)
         run: sudo apt-get update && sudo apt-get install -y openssh-server
-      - run: dotnet test --configuration Release
+      # Failed tests show up as annotations on the run (readable without opening the logs).
+      - run: dotnet test --configuration Release --logger GitHubActions --logger "console;verbosity=normal"
 
   build:
     needs: test
@@ -39,8 +40,8 @@ jobs:
           - { os: macos-latest,   rid: osx-x64,   channel: osx-x64,   exe: BoltShell,     icon: app.icns }
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
 
@@ -82,7 +83,7 @@ jobs:
           --runtime ${{ matrix.rid }} --packDir publish --mainExe ${{ matrix.exe }} --packTitle "BoltShell" --packAuthors "BoltShell contributors"
           --icon src/BoltShell.App/Assets/icon/${{ matrix.icon }} --channel ${{ matrix.channel }} --outputDir releases
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: BoltShell-${{ matrix.rid }}
           path: releases/
@@ -95,11 +96,11 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
       - run: dotnet tool install -g vpk --version ${{ env.VPK_VERSION }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v6
         with:
           path: artifacts
       # One release for all platforms; uploaded sequentially to avoid races. It is also the auto-update feed.
