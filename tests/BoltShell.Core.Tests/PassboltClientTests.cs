@@ -124,6 +124,54 @@ public class PassboltClientTests
     internal static PassboltAccount Account() => new(Domain + "/", UserId, TestKeys.User.Private);
 
     /// <summary>Implements just enough of the Passbolt API to exercise the client, including real PGP crypto.</summary>
+    [Fact]
+    public async Task SetCustomField_AddsHostKey_ToMetadataAndEverySecret()
+    {
+        var server = new FakePassboltServer();
+        using var client = new PassboltClient(Account(), server);
+        await client.LoginAsync(TestKeys.UserPassphrase);
+        var (id, _) = await client.CreateResourceAsync(new NewResource("web-01", "root", ["ssh://root@web-01:22"], "pw", null, []));
+
+        const string hostKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl";
+        await client.SetCustomFieldAsync(id, "ssh_host_key", hostKey);
+
+        var update = Assert.Single(server.Updates);
+        Assert.Equal("shared_key", update["metadata_key_type"]!.GetValue<string>());
+        Assert.Equal(2, update["secrets"]!.AsArray().Count); // the user and bob, each with an own copy
+        var bobsSecret = update["secrets"]!.AsArray().Single(x => x!["user_id"]!.GetValue<string>() == FakePassboltServer.BobId)!;
+        Assert.Contains(hostKey, PgpMessage.Decrypt(bobsSecret["data"]!.GetValue<string>(), PgpKeyChain.Unlock(TestKeys.Server.Private, "")));
+
+        var resource = (await client.GetResourcesAsync()).Single(r => r.Id == id);
+        var spec = Ssh.SshConnectionMapper.Map(resource, await client.GetSecretAsync(resource));
+        Assert.True(spec.HasPinnedHostKeys);
+        Assert.Equal("pw", spec.Credentials.Password); // the rest of the secret is unchanged
+    }
+
+    [Fact]
+    public async Task SetCustomField_ReplacesExistingValue()
+    {
+        var server = new FakePassboltServer();
+        using var client = new PassboltClient(Account(), server);
+        await client.LoginAsync(TestKeys.UserPassphrase);
+        var (id, _) = await client.CreateResourceAsync(new NewResource("win-01", "admin", ["rdp://win-01"], "pw", null, [new("rdp_cert_sha256", "old")]));
+
+        await client.SetCustomFieldAsync(id, "RDP_CERT_SHA256", "new");
+
+        var resource = (await client.GetResourcesAsync()).Single(r => r.Id == id);
+        Assert.Single(resource.CustomFields); // replaced, not added twice
+        var spec = Rdp.RdpConnectionMapper.Map(resource, await client.GetSecretAsync(resource));
+        Assert.Equal(["new"], spec.CertificateFingerprints);
+    }
+
+    [Fact]
+    public async Task SetCustomField_OnV4Resource_ExplainsWhy()
+    {
+        using var client = new PassboltClient(Account(), new FakePassboltServer());
+        await client.LoginAsync(TestKeys.UserPassphrase);
+        var ex = await Assert.ThrowsAsync<PassboltApiException>(() => client.SetCustomFieldAsync("r1", "ssh_host_key", "SHA256:x"));
+        Assert.Contains("v4", ex.Message);
+    }
+
     internal sealed class FakePassboltServer : HttpMessageHandler
     {
         private const string PasswordStringType = "a28a04cd-6f53-518a-967c-9963bf9cec51";
@@ -144,6 +192,7 @@ public class PassboltClientTests
         public const string ShareFolderId = "f9";
         public List<JsonObject> Created { get; } = [];
         public JsonNode? LastShare { get; private set; }
+        public List<JsonObject> Updates { get; } = [];
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
@@ -181,6 +230,31 @@ public class PassboltClientTests
                 created["id"] = $"new-{Created.Count + 1}";
                 Created.Add(created);
                 return Ok(new JsonObject { ["id"] = created["id"]!.GetValue<string>() });
+            }
+            if (request.Method == HttpMethod.Get && path.StartsWith("/resources/", StringComparison.Ordinal))
+            {
+                var id = path["/resources/".Length..^".json".Length];
+                if (id == "r1")
+                    return Ok(new JsonObject { ["id"] = "r1", ["name"] = "legacy", ["resource_type_id"] = PasswordStringType });
+                var resource = Created.Single(c => c["id"]!.GetValue<string>() == id).DeepClone().AsObject();
+                resource.Remove("secrets");
+                return Ok(resource);
+            }
+            if (request.Method == HttpMethod.Put && path.StartsWith("/resources/", StringComparison.Ordinal))
+            {
+                var id = path["/resources/".Length..^".json".Length];
+                Updates.Add(payload!.AsObject());
+                var stored = Created.Single(c => c["id"]!.GetValue<string>() == id);
+                stored["metadata"] = payload!["metadata"]!.DeepClone();
+                stored["secrets"] = new JsonArray(payload["secrets"]!.AsArray().Single(x => x!["user_id"]!.GetValue<string>() == UserId)!.DeepClone());
+                return Ok(stored.DeepClone());
+            }
+            if (path == "/users.json")
+            {
+                Assert.Contains("filter[has-access]=", Uri.UnescapeDataString(request.RequestUri.Query));
+                return Ok(new JsonArray(
+                    new JsonObject { ["id"] = UserId, ["gpgkey"] = new JsonObject { ["armored_key"] = TestKeys.User.Public } },
+                    new JsonObject { ["id"] = BobId, ["gpgkey"] = new JsonObject { ["armored_key"] = TestKeys.Server.Public } }));
             }
             if (path == $"/folders/{ShareFolderId}.json")
             {

@@ -1,0 +1,130 @@
+@inject AccountManager Accounts
+@inject WorkspaceState State
+@inject RdpProxy RdpProxy
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+@* Shows whether the server's identity is pinned in Passbolt: a warning if not (with "store in Passbolt"),
+   a prominent alert if it contradicts Passbolt (with "update in Passbolt" after an explicit confirmation). *@
+@if (Current() is { } identity)
+{
+    <div class="identity-bar @(identity.Mismatch ? "identity-alert" : "identity-warn")" role="@(identity.Mismatch ? "alert" : "status")">
+        <Icon Name="shield" Size="15" />
+        <div class="identity-text">
+            @if (identity.Mismatch)
+            {
+                <b>Server-Identität weicht von Passbolt ab – Verbindung abgelehnt.</b>
+                <span>
+                    Der Server meldet <span class="mono">SHA256:@identity.Presented</span>, in Passbolt
+                    (<span class="mono">@identity.Field</span>) steht <span class="mono">@string.Join(", ", identity.Expected.Select(f => "SHA256:" + f))</span>.
+                    Das kann ein Angriff (Man-in-the-Middle) sein. Nur aktualisieren, wenn der Server bekanntermaßen neu aufgesetzt wurde
+                    oder ein neues Zertifikat bekommen hat – am besten den Fingerprint vorher direkt am Server prüfen.
+                </span>
+            }
+            else
+            {
+                <b>Host-Identität nicht in Passbolt hinterlegt.</b>
+                <span>
+                    @(identity.IsRdp ? "Das Zertifikat" : "Der Host-Key") <span class="mono">SHA256:@identity.Presented</span> wird nur lokal
+                    auf diesem Rechner geprüft. In Passbolt hinterlegt (<span class="mono">@identity.Field</span>) prüft ihn jeder im Team.
+                </span>
+            }
+        </div>
+        <div class="identity-actions">
+            @if (CanStore)
+            {
+                <button type="button" class="btn btn-sm @(identity.Mismatch ? "" : "btn-primary")" disabled="@_saving" @onclick="() => StoreAsync(identity)">
+                    @(_saving ? "Speichere …" : identity.Mismatch ? "In Passbolt aktualisieren …" : "In Passbolt hinterlegen")
+                </button>
+            }
+            @if (!identity.Mismatch)
+            {
+                <button type="button" class="btn btn-sm" @onclick="Dismiss">Ausblenden</button>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public SessionTab Tab { get; set; } = null!;
+
+    private bool _saving;
+
+    private sealed record Identity(bool IsRdp, string Field, string Presented, string Value, IReadOnlyList<string> Expected, bool Mismatch);
+
+    private bool CanStore => Tab.AccountId is not null && Tab.ResourceId is not null;
+
+    private Identity? Current()
+    {
+        if (Tab.Rdp is { } rdp)
+        {
+            // Hidden as soon as Passbolt (as currently known to this tab) holds the presented certificate.
+            if (RdpProxy.Observed(rdp.Id) is not { } seen || rdp.Spec.CertificateFingerprints.Contains(seen.FingerprintSha256))
+                return null;
+            if (seen.Mismatch)
+                return new Identity(true, RdpConnectionMapper.CertificateField, seen.FingerprintSha256, seen.FingerprintSha256, seen.Expected, true);
+            if (Tab.RdpState != SessionState.Connected || rdp.Spec.CertificateFingerprints.Count > 0)
+                return null; // only warn about a connection that was actually accepted
+            return Visible(new Identity(true, RdpConnectionMapper.CertificateField, seen.FingerprintSha256, seen.FingerprintSha256, [], false));
+        }
+        if (Tab.Terminal is not { ObservedHostKey: { } line } terminal)
+            return null;
+        var presented = SshConnectionMapper.ParseHostKeys(line)[0].FingerprintSha256;
+        if (Tab.Spec?.HostKeys?.Any(k => k.FingerprintSha256 == presented) == true)
+            return null;
+        if (terminal.HostKeyMismatch is { } mismatch)
+            return new Identity(false, SshConnectionMapper.HostKeyField, presented, line, mismatch.ExpectedFingerprints, true);
+        if (terminal.State != SessionState.Connected || Tab.Spec?.HasPinnedHostKeys == true)
+            return null;
+        return Visible(new Identity(false, SshConnectionMapper.HostKeyField, presented, line, [], false));
+    }
+
+    private Identity? Visible(Identity identity) => identity.Mismatch || !Tab.HostIdentityDismissed ? identity : null;
+
+    private void Dismiss()
+    {
+        Tab.HostIdentityDismissed = true;
+        State.Notify();
+    }
+
+    private async Task StoreAsync(Identity identity)
+    {
+        if (Accounts.Find(Tab.AccountId!) is not { } account)
+        {
+            Snackbar.Add("Das Passbolt-Konto dieser Sitzung wurde entfernt.", Severity.Warning);
+            return;
+        }
+        if (identity.Mismatch && !await TextPromptDialog.ConfirmAsync(Dialogs, "Host-Identität ersetzen?",
+                $"Der Eintrag {identity.Field} in Passbolt wird durch SHA256:{identity.Presented} ersetzt – für alle, die diese Ressource nutzen. " +
+                "Nur bestätigen, wenn du sicher bist, dass sich der Server geändert hat und kein Angriff vorliegt.", "Ersetzen"))
+            return;
+        if (!await UnlockDialog.ShowAsync(Dialogs, account))
+            return;
+        if (account.Resources.FirstOrDefault(r => r.Id == Tab.ResourceId) is not { } resource)
+        {
+            Snackbar.Add("Die Ressource ist in Passbolt nicht mehr vorhanden.", Severity.Warning);
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            await account.SetCustomFieldAsync(resource, identity.Field, identity.Value);
+            if (identity.IsRdp)
+                State.UpdateHostIdentity(account.Id, resource.Id, null, [identity.Value], RdpProxy);
+            else
+                State.UpdateHostIdentity(account.Id, resource.Id, SshConnectionMapper.ParseHostKeys(identity.Value), null, RdpProxy);
+            Snackbar.Add(identity.Mismatch
+                ? $"{identity.Field} in Passbolt aktualisiert – bitte neu verbinden."
+                : $"{identity.Field} in Passbolt hinterlegt. Die Identität wird ab jetzt gegen Passbolt geprüft.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Speichern in Passbolt fehlgeschlagen: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

@@ -69,6 +69,9 @@ public sealed class SftpSession : IAsyncDisposable
 
     public void UpdateCredentials(SshCredentials credentials) => Spec = Spec with { Credentials = credentials };
 
+    /// <summary>Replaces the expected host identity (used from the next connect on).</summary>
+    public void UpdateHostKeys(IReadOnlyList<ExpectedHostKey>? hostKeys) => Spec = Spec with { HostKeys = hostKeys };
+
     public async Task ConnectAsync(CancellationToken ct = default)
     {
         await DisposeClientsAsync();

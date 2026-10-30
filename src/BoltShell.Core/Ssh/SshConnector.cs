@@ -13,9 +13,16 @@ public sealed class KeyPassphraseRequiredException(bool wrongPassphrase, Excepti
     public bool WrongPassphrase { get; } = wrongPassphrase;
 }
 
-public sealed class HostKeyRejectedException(HostKeyInfo key, string message) : Exception(message)
+public sealed class HostKeyRejectedException(HostKeyInfo key, string message, bool pinnedInPassbolt = false, IReadOnlyList<string>? expected = null)
+    : Exception(message)
 {
     public HostKeyInfo Key { get; } = key;
+
+    /// <summary>True if the key contradicted the host identity stored in Passbolt (not just a local trust decision).</summary>
+    public bool PinnedInPassbolt { get; } = pinnedInPassbolt;
+
+    /// <summary>Fingerprints Passbolt expected (SHA256, base64).</summary>
+    public IReadOnlyList<string> ExpectedFingerprints { get; } = expected ?? [];
 }
 
 /// <summary>
@@ -33,6 +40,12 @@ public sealed class SshConnector(KnownHostsStore knownHosts, ILogger<SshConnecto
 
     // Why the host key of a client was rejected; SSH.NET itself only reports a generic key exchange failure.
     private readonly ConditionalWeakTable<BaseClient, HostKeyRejectedException> _rejections = new();
+
+    // The host key each client was shown (known_hosts line), also when it was rejected.
+    private readonly ConditionalWeakTable<BaseClient, string> _observed = new();
+
+    /// <summary>The host key the server presented to <paramref name="client"/>, as a known_hosts style line.</summary>
+    public string? ObservedHostKey(BaseClient client) => _observed.TryGetValue(client, out var line) ? line : null;
 
     /// <summary>Connects a client created by this connector, reporting host key rejections as <see cref="HostKeyRejectedException"/>.</summary>
     public async Task ConnectAsync(BaseClient client, CancellationToken ct = default)
@@ -68,6 +81,7 @@ public sealed class SshConnector(KnownHostsStore knownHosts, ILogger<SshConnecto
     private bool VerifyHostKey(BaseClient client, SshConnectionSpec spec, HostKeyEventArgs e)
     {
         var fingerprint = e.FingerPrintSHA256.TrimEnd('=');
+        _observed.AddOrUpdate(client, SshKeyGenerator.HostKeyLine(e.HostKey));
 
         // Host identity published in Passbolt is authoritative: no prompt, no local override.
         if (spec.HasPinnedHostKeys)
@@ -81,7 +95,8 @@ public sealed class SshConnector(KnownHostsStore knownHosts, ILogger<SshConnecto
             _rejections.AddOrUpdate(client, new HostKeyRejectedException(presented,
                 $"The host key of {spec.Target.HostAndPort} (SHA256:{fingerprint}) does not match the host identity " +
                 $"stored in Passbolt ({SshConnectionMapper.HostKeyField}). Connection refused to protect against " +
-                "man-in-the-middle attacks. If the server was reinstalled, update the resource in Passbolt."));
+                "man-in-the-middle attacks. If the server was reinstalled, update the resource in Passbolt.",
+                pinnedInPassbolt: true, expected: spec.HostKeys!.Select(k => k.FingerprintSha256).ToList()));
             return false;
         }
 

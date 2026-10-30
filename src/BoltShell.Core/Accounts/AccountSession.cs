@@ -109,6 +109,14 @@ public sealed class AccountSession : IDisposable
         return result;
     }
 
+    /// <summary>Adds or replaces a text custom field of a resource (e.g. the host identity) and reloads the resource list.</summary>
+    public async Task SetCustomFieldAsync(PassboltResource resource, string key, string value, CancellationToken ct = default)
+    {
+        await RequireUnlockedClient().SetCustomFieldAsync(resource.Id, key, value, ct);
+        Touch();
+        await RefreshAsync(ct);
+    }
+
     /// <summary>Decrypts the resource's secret and turns it into RDP connection parameters.</summary>
     public async Task<RdpConnectionSpec> GetRdpSpecAsync(PassboltResource resource, CancellationToken ct = default)
     {

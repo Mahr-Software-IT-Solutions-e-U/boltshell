@@ -30,6 +30,9 @@ public sealed partial class SessionTab
     /// </summary>
     public bool CredentialsCleared { get; internal set; }
     public SessionState RdpState { get; set; } = SessionState.Created;
+
+    /// <summary>The user hid the "host identity not in Passbolt" notice for this tab.</summary>
+    public bool HostIdentityDismissed { get; set; }
     public (int Width, int Height)? RdpDesktopSize { get; set; }
 
     public bool IsRdp => Rdp is not null;
@@ -148,6 +151,27 @@ public sealed class WorkspaceState
         if (rdpSpec is not null && tab.Rdp is { } rdp)
             tab.Rdp = proxy.Update(rdp, rdpSpec);
         tab.CredentialsCleared = false;
+    }
+
+    /// <summary>
+    /// Applies a host identity just stored in Passbolt to all tabs of that resource (used from their next connect on).
+    /// </summary>
+    public void UpdateHostIdentity(string accountId, string resourceId, IReadOnlyList<ExpectedHostKey>? hostKeys,
+        IReadOnlyList<string>? certificateFingerprints, RdpProxy proxy)
+    {
+        foreach (var tab in _tabs.Where(t => t.AccountId == accountId && t.ResourceId == resourceId))
+        {
+            if (hostKeys is not null && tab.Spec is { } spec)
+            {
+                tab.Spec = spec with { HostKeys = hostKeys };
+                tab.Terminal?.UpdateHostKeys(hostKeys);
+                tab.Sftp?.UpdateHostKeys(hostKeys);
+            }
+            if (certificateFingerprints is not null && tab.Rdp is { } rdp)
+                tab.Rdp = proxy.Update(rdp, rdp.Spec with { CertificateFingerprints = certificateFingerprints });
+            tab.HostIdentityDismissed = false;
+        }
+        Notify();
     }
 
     public void Remove(SessionTab tab)

@@ -30,6 +30,7 @@ public sealed class PassboltClient : IDisposable
     private string? _refreshToken;
     private bool _metadataKeysLoaded;
     private (string Id, PgpPublicKeys Key)? _sharedMetadataKey;
+    private readonly Dictionary<string, PgpPublicKeys> _metadataPublicKeys = new();
 
     public PassboltClient(PassboltAccount account, HttpMessageHandler? handler = null, ILogger<PassboltClient>? logger = null)
     {
@@ -273,6 +274,95 @@ public sealed class PassboltClient : IDisposable
         return (id, warning);
     }
 
+    /// <summary>
+    /// Sets a text custom field (e.g. <c>ssh_host_key</c>) of an existing Passbolt v5 resource: adds it if missing,
+    /// otherwise replaces its value. The value is stored in the secret like the Passbolt extension does, so the secret is
+    /// re-encrypted for every user with access; the metadata keeps its key (shared or personal).
+    /// </summary>
+    public async Task SetCustomFieldAsync(string resourceId, string key, string value, CancellationToken ct = default)
+    {
+        var keys = RequireKeys();
+        if (!_metadataKeysLoaded)
+            await LoadMetadataKeysAsync(ct);
+        var escapedId = Uri.EscapeDataString(resourceId);
+        var item = await SendAsync(HttpMethod.Get, $"resources/{escapedId}.json", null, authenticated: true, ct);
+        if (item["metadata"]?.GetValue<string>() is not { } armoredMetadata)
+            throw new PassboltApiException("This is a Passbolt v4 resource; custom fields need a v5 resource. Migrate it in Passbolt or add the field there.");
+        var metadataKeyId = item["metadata_key_id"]?.GetValue<string>();
+        var metadataKeyType = item["metadata_key_type"]?.GetValue<string>() ?? "user_key";
+        var typeId = item["resource_type_id"]?.GetValue<string>();
+
+        var metadata = JsonNode.Parse(PgpMessage.Decrypt(armoredMetadata, keys))!.AsObject();
+        var secretBody = await SendAsync(HttpMethod.Get, $"secrets/resource/{escapedId}.json", null, authenticated: true, ct);
+        var secretPlaintext = PgpMessage.Decrypt(secretBody["data"]?.GetValue<string>() ?? throw new PassboltApiException("Secret has no data."), keys);
+        if (JsonNode.Parse(secretPlaintext) is not JsonObject secret)
+            throw new PassboltApiException("The resource's secret is not a v5 secret object.");
+
+        ApplyCustomField(metadata, secret, key, value);
+
+        PgpPublicKeys metadataRecipient;
+        if (metadataKeyType == "shared_key")
+            metadataRecipient = metadataKeyId is not null && _metadataPublicKeys.TryGetValue(metadataKeyId, out var shared) ? shared
+                : throw new PassboltApiException("The shared metadata key of this resource is not available.");
+        else
+            metadataRecipient = keys.PublicKeys;
+
+        // Everyone with access needs the new secret, encrypted to their own key.
+        var users = await SendAsync(HttpMethod.Get, $"users.json?filter[has-access]={escapedId}&contain[gpgkey]=1", null, authenticated: true, ct);
+        var secrets = new JsonArray();
+        var newSecret = secret.ToJsonString();
+        foreach (var user in users.AsArray())
+        {
+            var userId = user?["id"]?.GetValue<string>();
+            var armored = user?["gpgkey"]?["armored_key"]?.GetValue<string>();
+            if (userId is null || armored is null)
+                throw new PassboltApiException($"User {userId} has no public key.");
+            var recipient = userId == _account.UserId ? keys.PublicKeys : PgpPublicKeys.Parse(armored);
+            secrets.Add(new JsonObject { ["user_id"] = userId, ["data"] = PgpMessage.EncryptAndSign(newSecret, recipient, keys) });
+        }
+        if (secrets.Count == 0)
+            throw new PassboltApiException("Could not determine who has access to the resource.");
+
+        var body = new JsonObject
+        {
+            ["resource_type_id"] = typeId,
+            ["metadata"] = PgpMessage.EncryptAndSign(metadata.ToJsonString(), metadataRecipient, keys),
+            ["metadata_key_id"] = metadataKeyId,
+            ["metadata_key_type"] = metadataKeyType,
+            ["secrets"] = secrets,
+        };
+        await SendAsync(HttpMethod.Put, $"resources/{escapedId}.json", body, authenticated: true, ct);
+    }
+
+    /// <summary>Adds or replaces custom field <paramref name="key"/> in decrypted v5 metadata and secret objects.</summary>
+    internal static void ApplyCustomField(JsonObject metadata, JsonObject secret, string key, string value)
+    {
+        if (metadata["custom_fields"] is not JsonArray metaFields)
+            metadata["custom_fields"] = metaFields = new JsonArray();
+        if (secret["custom_fields"] is not JsonArray secretFields)
+            secret["custom_fields"] = secretFields = new JsonArray();
+
+        var existing = metaFields.OfType<JsonObject>()
+            .FirstOrDefault(f => string.Equals(f["metadata_key"]?.GetValue<string>()?.Trim(), key, StringComparison.OrdinalIgnoreCase));
+        string id;
+        if (existing is null)
+        {
+            id = Guid.NewGuid().ToString();
+            metaFields.Add(new JsonObject { ["id"] = id, ["type"] = "text", ["metadata_key"] = key });
+        }
+        else
+        {
+            id = existing["id"]!.GetValue<string>();
+            existing.Remove("metadata_value"); // the secret value is authoritative
+        }
+
+        var secretField = secretFields.OfType<JsonObject>().FirstOrDefault(f => f["id"]?.GetValue<string>() == id);
+        if (secretField is null)
+            secretFields.Add(new JsonObject { ["id"] = id, ["type"] = existing?["type"]?.GetValue<string>() ?? "text", ["secret_value"] = value });
+        else
+            secretField["secret_value"] = value;
+    }
+
     /// <summary>Applies the folder's user/group permissions to a resource and encrypts its secret for every added user.</summary>
     private async Task ShareLikeFolderAsync(string resourceId, string folderId, string secretPlaintext, CancellationToken ct)
     {
@@ -421,6 +511,7 @@ public sealed class PassboltClient : IDisposable
                 try
                 {
                     _sharedMetadataKey = (keyId, PgpPublicKeys.Parse(armoredPublic));
+                    _metadataPublicKeys[keyId] = _sharedMetadataKey.Value.Key;
                 }
                 catch (PgpException ex)
                 {

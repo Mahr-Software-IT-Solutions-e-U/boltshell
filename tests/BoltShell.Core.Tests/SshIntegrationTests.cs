@@ -88,6 +88,18 @@ public sealed class SshIntegrationTests : IClassFixture<LocalSshServer>, IDispos
         Assert.Contains("does not match the host identity stored in Passbolt", ex.Message);
         Assert.Equal(SessionState.Failed, terminal.State);
 
+        // The tab can show what the server presented and offer it for Passbolt.
+        Assert.True(ex.PinnedInPassbolt);
+        Assert.Equal(["AAAAwrongfingerprint"], ex.ExpectedFingerprints);
+        Assert.Same(ex, terminal.HostKeyMismatch);
+        var presented = Assert.Single(SshConnectionMapper.ParseHostKeys(terminal.ObservedHostKey));
+        Assert.Equal(Assert.Single(SshConnectionMapper.ParseHostKeys("[127.0.0.1]:22 " + _server.HostPublicKey)).FingerprintSha256, presented.FingerprintSha256);
+
+        // After the identity is updated, the next connect succeeds and the mismatch is cleared.
+        terminal.UpdateHostKeys(SshConnectionMapper.ParseHostKeys(terminal.ObservedHostKey));
+        Assert.Contains("pb-updated-42", await RunEchoAsync(terminal, "updated"));
+        Assert.Null(terminal.HostKeyMismatch);
+
         var sftp = manager.CreateSftp(spec);
         await Assert.ThrowsAsync<HostKeyRejectedException>(() => sftp.ConnectAsync());
         Assert.Empty(_prompts);

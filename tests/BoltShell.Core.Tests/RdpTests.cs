@@ -145,9 +145,13 @@ public sealed class RdpTests : IDisposable
         // A Passbolt pin that does not match is refused without asking.
         var pinned = proxy.Register(Spec(server.Port) with { CertificateFingerprints = ["AAAAnotthecert"] });
         Assert.Equal(495, (await HandshakeAsync(pinned)).Error?.HttpStatusCode);
+        var fingerprint = Convert.ToBase64String(SHA256.HashData(cert.RawData)).TrimEnd('=');
+        var observed = proxy.Observed(pinned.Id)!;
+        Assert.True(observed.Mismatch);
+        Assert.Equal(fingerprint, observed.FingerprintSha256);
+        Assert.Equal(["AAAAnotthecert"], observed.Expected);
 
         // The matching pin is accepted.
-        var fingerprint = Convert.ToBase64String(SHA256.HashData(cert.RawData)).TrimEnd('=');
         var good = proxy.Register(Spec(server.Port) with { CertificateFingerprints = [fingerprint] });
         Assert.Null((await HandshakeAsync(good)).Error);
     }

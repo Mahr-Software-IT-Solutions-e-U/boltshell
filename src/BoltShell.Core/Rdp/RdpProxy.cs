@@ -16,6 +16,15 @@ namespace BoltShell.Core.Rdp;
 /// <summary>A registered RDP session: where the web client connects and how it authenticates to the proxy.</summary>
 public sealed record RdpProxySession(string Id, string Token, string ProxyAddress, RdpConnectionSpec Spec);
 
+/// <summary>The certificate an RDP server presented, and whether it contradicted the Passbolt pin.</summary>
+/// <param name="FingerprintSha256">Unpadded base64, the format of <c>rdp_cert_sha256</c>.</param>
+/// <param name="Expected">Fingerprints pinned in Passbolt (empty if none).</param>
+public sealed record RdpCertificateObservation(string FingerprintSha256, string? Subject, IReadOnlyList<string> Expected)
+{
+    public bool Pinned => Expected.Count > 0;
+    public bool Mismatch => Pinned && !Expected.Contains(FingerprintSha256);
+}
+
 /// <summary>
 /// Local RDCleanPath proxy for the IronRDP web client running in the app's WebView.
 /// Listens on 127.0.0.1 only; each session gets a random token and is bound to one destination.
@@ -28,6 +37,7 @@ public sealed class RdpProxy(KnownHostsStore trustStore, ILogger<RdpProxy> logge
     private const string WebSocketGuid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
     private readonly ConcurrentDictionary<string, RdpProxySession> _sessions = new();
+    private readonly ConcurrentDictionary<string, RdpCertificateObservation> _observed = new();
     private readonly CancellationTokenSource _cts = new();
     private readonly Lock _startLock = new();
     private TcpListener? _listener;
@@ -47,7 +57,14 @@ public sealed class RdpProxy(KnownHostsStore trustStore, ILogger<RdpProxy> logge
         return session;
     }
 
-    public void Unregister(string sessionId) => _sessions.TryRemove(sessionId, out _);
+    public void Unregister(string sessionId)
+    {
+        _sessions.TryRemove(sessionId, out _);
+        _observed.TryRemove(sessionId, out _);
+    }
+
+    /// <summary>The certificate seen on the last connect of a session, if it got that far.</summary>
+    public RdpCertificateObservation? Observed(string sessionId) => _observed.GetValueOrDefault(sessionId);
 
     /// <summary>Replaces the connection data of a registered session (e.g. to drop or refresh credentials).</summary>
     public RdpProxySession Update(RdpProxySession session, RdpConnectionSpec spec)
@@ -239,7 +256,7 @@ public sealed class RdpProxy(KnownHostsStore trustStore, ILogger<RdpProxy> logge
             logger.LogInformation("RDP {Session}: TLS {Protocol} {Cipher}, certificate {Subject}", session.Id, tls.SslProtocol, tls.NegotiatedCipherSuite, leaf?.Subject);
 
             step = "certificate";
-            if (leaf is null || !await VerifyCertificateAsync(session.Spec, leaf))
+            if (leaf is null || !await VerifyCertificateAsync(session, leaf))
             {
                 logger.LogWarning("RDP {Session}: server certificate not accepted", session.Id);
                 await SendErrorAsync(ws, new RdCleanPathError(RdCleanPathPdu.GeneralError, HttpStatusCode: 495), ct);
@@ -291,12 +308,15 @@ public sealed class RdpProxy(KnownHostsStore trustStore, ILogger<RdpProxy> logge
     }
 
     /// <summary>Passbolt pin (<c>rdp_cert_sha256</c>) is authoritative; otherwise trust on first use with a prompt.</summary>
-    private async Task<bool> VerifyCertificateAsync(RdpConnectionSpec spec, X509Certificate2 certificate)
+    private async Task<bool> VerifyCertificateAsync(RdpProxySession session, X509Certificate2 certificate)
     {
+        var spec = session.Spec;
         var fingerprint = Convert.ToBase64String(SHA256.HashData(certificate.RawData)).TrimEnd('=');
-        if (spec.CertificateFingerprints.Count > 0)
+        var observation = new RdpCertificateObservation(fingerprint, certificate.Subject, spec.CertificateFingerprints);
+        _observed[session.Id] = observation;
+        if (observation.Pinned)
         {
-            var ok = spec.CertificateFingerprints.Contains(fingerprint);
+            var ok = !observation.Mismatch;
             if (!ok)
                 logger.LogWarning("RDP certificate of {Target} (SHA256:{Fingerprint}) does not match Passbolt", spec.Target.Destination, fingerprint);
             return ok;

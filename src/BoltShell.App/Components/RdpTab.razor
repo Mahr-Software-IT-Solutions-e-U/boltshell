@@ -111,7 +111,7 @@
             (1 or 2, _) => "Anmeldung fehlgeschlagen: Benutzer, Domäne oder Passwort sind falsch.",
             (3, _) => "Zugriff verweigert.",
             (6, _) => "Der Server hat das angeforderte Sicherheitsprotokoll abgelehnt (NLA/TLS-Einstellung des Servers prüfen).",
-            (_, 495) => "Das Zertifikat des Servers wurde nicht bestätigt oder passt nicht zu rdp_cert_sha256 in Passbolt.",
+            (_, 495) => "Das Zertifikat des Servers wurde nicht bestätigt oder passt nicht zu rdp_cert_sha256 in Passbolt (Details oberhalb).",
             (_, 403) => "Der lokale RDP-Vermittler hat die Verbindung abgelehnt.",
             _ when wsaError != 0 => $"Der RDP-Server ist nicht erreichbar (Socket-Fehler {wsaError}).",
             _ when tlsAlert != 0 => $"TLS-Handshake mit dem Server fehlgeschlagen (Alert {tlsAlert}).",

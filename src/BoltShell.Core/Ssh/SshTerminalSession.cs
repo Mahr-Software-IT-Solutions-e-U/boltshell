@@ -30,6 +30,12 @@ public sealed class SshTerminalSession : IAsyncDisposable
     public SessionState State { get; private set; } = SessionState.Created;
     public string? Error { get; private set; }
 
+    /// <summary>The host key the server presented on the last connect (known_hosts line), if any.</summary>
+    public string? ObservedHostKey { get; private set; }
+
+    /// <summary>Set when the last connect was refused because the server's key contradicts Passbolt.</summary>
+    public HostKeyRejectedException? HostKeyMismatch { get; private set; }
+
     /// <summary>Raised after input containing Enter was sent (e.g. to refresh the working directory).</summary>
     public event Action? InputSubmitted;
 
@@ -41,6 +47,9 @@ public sealed class SshTerminalSession : IAsyncDisposable
     /// <summary>Replaces the credentials, e.g. after the user entered a key passphrase.</summary>
     public void UpdateCredentials(SshCredentials credentials) => Spec = Spec with { Credentials = credentials };
 
+    /// <summary>Replaces the expected host identity (used from the next connect on).</summary>
+    public void UpdateHostKeys(IReadOnlyList<ExpectedHostKey>? hostKeys) => Spec = Spec with { HostKeys = hostKeys };
+
     public async Task ConnectAsync(int columns, int rows, CancellationToken ct = default)
     {
         if (State is SessionState.Connecting or SessionState.Connected)
@@ -50,8 +59,21 @@ public sealed class SshTerminalSession : IAsyncDisposable
         {
             await CloseClientAsync();
             _size = (columns, rows);
+            HostKeyMismatch = null;
             _client = _connector.CreateSshClient(Spec);
-            await _connector.ConnectAsync(_client, ct);
+            try
+            {
+                await _connector.ConnectAsync(_client, ct);
+            }
+            catch (HostKeyRejectedException ex) when (ex.PinnedInPassbolt)
+            {
+                HostKeyMismatch = ex;
+                throw;
+            }
+            finally
+            {
+                ObservedHostKey = _connector.ObservedHostKey(_client);
+            }
             // Use the latest size: the terminal may have been resized while connecting.
             _shell = _client.CreateShellStream("xterm-256color", (uint)_size.Columns, (uint)_size.Rows, 0, 0, 64 * 1024);
             _shell.DataReceived += (_, e) => DataReceived?.Invoke(e.Data);

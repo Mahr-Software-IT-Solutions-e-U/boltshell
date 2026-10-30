@@ -81,15 +81,18 @@
                 {
                     <div class="session" hidden="@(tab != State.Active)" @key="tab.Id">
                         <div class="term-wrap">
-                            @if (tab.IsRdp)
-                            {
-                                <RdpTab Tab="tab" Active="@(tab == State.Active)" BeforeConnect="() => EnsureCredentialsAsync(tab)" />
-                            }
-                            else
-                            {
-                                <TerminalTab Session="tab.Terminal!" Active="@(tab == State.Active)" Banner="@Banner(tab)" BeforeConnect="() => EnsureCredentialsAsync(tab)"
-                                             OnTitleChanged="title => OnTerminalTitle(tab, title)" OnSizeChanged="State.Notify" />
-                            }
+                            <HostIdentityBar Tab="tab" />
+                            <div class="term-body">
+                                @if (tab.IsRdp)
+                                {
+                                    <RdpTab Tab="tab" Active="@(tab == State.Active)" BeforeConnect="() => EnsureCredentialsAsync(tab)" />
+                                }
+                                else
+                                {
+                                    <TerminalTab Session="tab.Terminal!" Active="@(tab == State.Active)" Banner="@Banner(tab)" BeforeConnect="() => EnsureCredentialsAsync(tab)"
+                                                 OnTitleChanged="title => OnTerminalTitle(tab, title)" OnSizeChanged="State.Notify" />
+                                }
+                            </div>
                         </div>
                         @if (tab.Sftp is not null)
                         {
