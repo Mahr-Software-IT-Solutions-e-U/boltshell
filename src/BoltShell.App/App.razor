@@ -86,6 +86,7 @@
         Window.Changed += OnChanged;
         BoltShell.Core.Localization.Texts.Changed += OnChanged;
         Connector.HostKeyPrompt = PromptHostKeyAsync;
+        Connector.KeyboardPrompt = PromptKeyboardAsync;
         RdpProxy.CertificatePrompt = PromptHostKeyAsync;
     }
 
@@ -101,6 +102,25 @@
             _windowRef = DotNetObjectReference.Create(Window);
             await JS.InvokeVoidAsync("pbsshWindow.init", _windowRef);
         }
+    }
+
+    // Keyboard-interactive question the stored credentials cannot answer, e.g. a one-time code (called on an SSH.NET thread).
+    private Task<string?> PromptKeyboardAsync(KeyboardQuestion question)
+    {
+        var answer = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                answer.TrySetResult(await TextPromptDialog.ShowAsync(Dialogs, Tr("Sign-in to {0}", question.Target), question.Question,
+                    question.Instruction ?? Tr("The server asks for additional input, e.g. a one-time code."), secret: !question.Echo));
+            }
+            catch (Exception ex)
+            {
+                answer.TrySetException(ex);
+            }
+        });
+        return answer.Task;
     }
 
     // Called on an SSH.NET thread; marshal to the UI and wait for the user's answer.
@@ -140,6 +160,7 @@
         Window.Changed -= OnChanged;
         BoltShell.Core.Localization.Texts.Changed -= OnChanged;
         Connector.HostKeyPrompt = null;
+        Connector.KeyboardPrompt = null;
         RdpProxy.CertificatePrompt = null;
         _windowRef?.Dispose();
     }

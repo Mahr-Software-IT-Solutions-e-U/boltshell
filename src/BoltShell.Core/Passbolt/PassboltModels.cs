@@ -49,7 +49,8 @@ public sealed record CustomFieldDefinition(string Id, string Key, string? Metada
 public sealed record PassboltSecret(
     string? Password,
     string? Description,
-    IReadOnlyDictionary<string, string> CustomFieldValues);
+    IReadOnlyDictionary<string, string> CustomFieldValues,
+    Crypto.TotpSettings? Totp = null);
 
 /// <summary>A resource to create. Custom fields need Passbolt v5.</summary>
 public sealed record NewResource(

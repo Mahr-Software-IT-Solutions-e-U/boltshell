@@ -6,7 +6,8 @@ using static BoltShell.Core.Localization.Texts;
 namespace BoltShell.Core.Ssh;
 
 /// <summary>Credentials for one connection. Kept in memory only for as long as the connection needs them.</summary>
-public sealed record SshCredentials(string? Password, string? PrivateKey, string? KeyPassphrase)
+/// <param name="Totp">One-time password settings from Passbolt, answered automatically when the server asks for a code.</param>
+public sealed record SshCredentials(string? Password, string? PrivateKey, string? KeyPassphrase, Crypto.TotpSettings? Totp = null)
 {
     public bool HasPrivateKey => !string.IsNullOrEmpty(PrivateKey);
     public bool HasPassword => !string.IsNullOrEmpty(Password);
@@ -91,7 +92,7 @@ public static partial class SshConnectionMapper
         else
             credentials = new SshCredentials(null, privateKey, password);
 
-        return new SshConnectionSpec(resource.Name, target, username, credentials, hostKeys, publicKey);
+        return new SshConnectionSpec(resource.Name, target, username, credentials with { Totp = secret.Totp }, hostKeys, publicKey);
     }
 
     /// <summary>
