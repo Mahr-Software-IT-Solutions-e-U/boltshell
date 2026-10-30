@@ -1,7 +1,26 @@
 @implements IDisposable
 @inject WindowService Window
 
-@if (Window.Frameless)
+@* One instance per header edge; Leading="true" marks the left one, which is used on macOS. *@
+@if (!Window.Frameless || Leading != Window.IsMac)
+{
+}
+else if (Window.IsMac)
+{
+    <div class="traffic-lights" data-no-drag>
+        <button type="button" class="tl-btn tl-close" aria-label="@Tr("Close")" title="@Tr("Close")" @onclick="Window.Close">
+            <svg aria-hidden="true" width="8" height="8" viewBox="0 0 8 8" stroke="currentColor" stroke-width="1.2"><line x1="1.5" y1="1.5" x2="6.5" y2="6.5" /><line x1="6.5" y1="1.5" x2="1.5" y2="6.5" /></svg>
+        </button>
+        <button type="button" class="tl-btn tl-min" aria-label="@Tr("Minimize")" title="@Tr("Minimize")" @onclick="Window.Minimize">
+            <svg aria-hidden="true" width="8" height="8" viewBox="0 0 8 8" stroke="currentColor" stroke-width="1.2"><line x1="1" y1="4" x2="7" y2="4" /></svg>
+        </button>
+        <button type="button" class="tl-btn tl-zoom" aria-label="@(Window.IsMaximized ? Tr("Restore") : Tr("Maximize"))"
+                title="@(Window.IsMaximized ? Tr("Restore") : Tr("Maximize"))" @onclick="Window.ToggleMaximize">
+            <svg aria-hidden="true" width="8" height="8" viewBox="0 0 8 8" fill="currentColor"><path d="M1.5 1.5h3.5L1.5 5z" /><path d="M6.5 6.5H3l3.5-3.5z" /></svg>
+        </button>
+    </div>
+}
+else
 {
     <div class="window-controls" data-no-drag>
         <button type="button" class="wc-btn" aria-label="@Tr("Minimize")" title="@Tr("Minimize")" @onclick="Window.Minimize">
@@ -27,6 +46,9 @@
 }
 
 @code {
+    /// <summary>True for the instance at the start of a header (macOS); the default one sits at the end (Windows/Linux).</summary>
+    [Parameter] public bool Leading { get; set; }
+
     protected override void OnInitialized() => Window.Changed += OnChanged;
 
     private void OnChanged() => InvokeAsync(StateHasChanged);
