@@ -83,12 +83,17 @@ jobs:
           vpk download github --repoUrl "${{ github.server_url }}/${{ github.repository }}"
           --token "${{ secrets.GITHUB_TOKEN }}" --channel ${{ matrix.channel }} --outputDir releases
 
+      # Release notes travel inside the package; vpk upload uses them as the GitHub release text.
       - name: Package
         shell: bash
-        run: >
-          vpk pack --packId BoltShell --packVersion ${{ steps.version.outputs.version }}
-          --runtime ${{ matrix.rid }} --packDir publish --mainExe ${{ matrix.exe }} --packTitle "BoltShell" --packAuthors "BoltShell contributors"
-          --icon src/BoltShell.App/Assets/icon/${{ matrix.icon }} --channel ${{ matrix.channel }} --outputDir releases
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          printf '%s\n' "Source code for this release: tag v$version (archives below)." \
+            "License texts are included in every package (LICENSE, THIRD_PARTY_NOTICES.md, licenses/)." > release-notes.md
+          vpk pack --packId BoltShell --packVersion "$version" \
+            --runtime ${{ matrix.rid }} --packDir publish --mainExe ${{ matrix.exe }} --packTitle "BoltShell" --packAuthors "BoltShell contributors" \
+            --icon src/BoltShell.App/Assets/icon/${{ matrix.icon }} --channel ${{ matrix.channel }} --outputDir releases \
+            --releaseNotes release-notes.md
 
       - uses: actions/upload-artifact@v6
         with:
@@ -123,6 +128,5 @@ jobs:
             esac
             vpk upload github --repoUrl "${{ github.server_url }}/${{ github.repository }}" \
               --token "${{ secrets.GITHUB_TOKEN }}" --channel "$channel" --outputDir "$dir" \
-              --tag "v$version" --releaseName "BoltShell $version" --merge --publish \
-              --releaseNotes "Source code for this release: tag v$version (archives below). License texts are included in every package (LICENSE, THIRD_PARTY_NOTICES.md, licenses/)."
+              --tag "v$version" --releaseName "BoltShell $version" --merge --publish
           done
