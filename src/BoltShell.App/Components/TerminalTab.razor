@@ -74,6 +74,7 @@
     private async Task OnFirstRenderAsync()
     {
         _rendered = true;
+        await JS.InvokeVoidAsync("pbssh.patchModeRequests", _terminal.Id);
         await JS.InvokeVoidAsync("pbssh.observeFit", _host, _terminal.Id);
         _ = PumpOutputAsync();
         await ConnectAsync();
