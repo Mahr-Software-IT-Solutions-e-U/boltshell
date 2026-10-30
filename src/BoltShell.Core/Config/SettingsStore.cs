@@ -24,6 +24,9 @@ public sealed record AppSettings
     /// <summary>Use the operating system's title bar instead of the app's own (frameless window).</summary>
     public bool NativeTitleBar { get; init; }
 
+    /// <summary>UI language code (<c>de</c>, <c>en</c>); null follows the operating system.</summary>
+    public string? Language { get; init; }
+
     /// <summary>Last local directory used for downloads.</summary>
     public string? DownloadDirectory { get; init; }
 

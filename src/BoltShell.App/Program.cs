@@ -33,8 +33,12 @@ internal static class Program
         var app = builder.Build();
         app.Services.GetRequiredService<FileDialogService>().Window = app.MainWindow;
 
+        var settings = app.Services.GetRequiredService<BoltShell.Core.Config.SettingsStore>().Current;
+        BoltShell.Core.Localization.Texts.Register(typeof(App).Assembly);
+        BoltShell.Core.Localization.Texts.SetLanguage(settings.Language);
+
         // Frameless window with the app's own title bar (see WindowControls); can be turned off in settings.json.
-        var frameless = !app.Services.GetRequiredService<BoltShell.Core.Config.SettingsStore>().Current.NativeTitleBar;
+        var frameless = !settings.NativeTitleBar;
         app.MainWindow.SetChromeless(frameless);
         app.Services.GetRequiredService<WindowService>().Attach(app.MainWindow, frameless);
 

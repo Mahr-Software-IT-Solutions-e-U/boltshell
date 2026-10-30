@@ -6,44 +6,46 @@
 @inject WindowService Window
 @inject IJSRuntime JS
 
-<MudThemeProvider IsDarkMode="true" Theme="_theme" />
-<MudPopoverProvider />
-<MudDialogProvider CloseOnEscapeKey="true" BackdropClick="false" />
-<MudSnackbarProvider />
+<CascadingValue Name="Language" Value="CurrentLanguage">
+    <MudThemeProvider IsDarkMode="true" Theme="_theme" />
+    <MudPopoverProvider />
+    <MudDialogProvider CloseOnEscapeKey="true" BackdropClick="false" />
+    <MudSnackbarProvider />
 
-@if (Window.Frameless && !Window.IsMaximized)
-{
-    @* Invisible grips for resizing the frameless window. *@
-    @foreach (var edge in new[] { "n", "s", "e", "w", "ne", "nw", "se", "sw" })
+    @if (Window.Frameless && !Window.IsMaximized)
     {
-        <div class="resize-grip resize-@edge" data-resize="@edge" aria-hidden="true"></div>
+        @* Invisible grips for resizing the frameless window. *@
+        @foreach (var edge in new[] { "n", "s", "e", "w", "ne", "nw", "se", "sw" })
+        {
+            <div class="resize-grip resize-@edge" data-resize="@edge" aria-hidden="true"></div>
+        }
     }
-}
 
-@if (Accounts.Accounts.Count == 0)
-{
-    <AccountsView FirstRun="true" />
-}
-else
-{
-    @* The workspace stays mounted while the accounts page is shown, so terminals keep running. *@
-    <div style="@(_page == Page.Workspace ? "" : "display:none")">
-        <Workspace OnManageAccounts="() => _page = Page.Accounts" OnProvisionHost="() => _page = Page.Provision"
-                   OnCreateRdpHost="() => _page = Page.CreateRdp" />
-    </div>
-    @if (_page == Page.Accounts)
+    @if (Accounts.Accounts.Count == 0)
     {
-        <AccountsView OnBack="() => _page = Page.Workspace" />
+        <AccountsView FirstRun="true" />
     }
-    else if (_page == Page.Provision)
+    else
     {
-        <ProvisionView OnBack="() => _page = Page.Workspace" />
+        @* The workspace stays mounted while the accounts page is shown, so terminals keep running. *@
+        <div style="@(_page == Page.Workspace ? "" : "display:none")">
+            <Workspace OnManageAccounts="() => _page = Page.Accounts" OnProvisionHost="() => _page = Page.Provision"
+                       OnCreateRdpHost="() => _page = Page.CreateRdp" />
+        </div>
+        @if (_page == Page.Accounts)
+        {
+            <AccountsView OnBack="() => _page = Page.Workspace" />
+        }
+        else if (_page == Page.Provision)
+        {
+            <ProvisionView OnBack="() => _page = Page.Workspace" />
+        }
+        else if (_page == Page.CreateRdp)
+        {
+            <RdpHostView OnBack="() => _page = Page.Workspace" />
+        }
     }
-    else if (_page == Page.CreateRdp)
-    {
-        <RdpHostView OnBack="() => _page = Page.Workspace" />
-    }
-}
+</CascadingValue>
 
 @code {
     private enum Page { Workspace, Accounts, Provision, CreateRdp }
@@ -81,6 +83,7 @@ else
     {
         Accounts.Changed += OnChanged;
         Window.Changed += OnChanged;
+        BoltShell.Core.Localization.Texts.Changed += OnChanged;
         Connector.HostKeyPrompt = PromptHostKeyAsync;
         RdpProxy.CertificatePrompt = PromptHostKeyAsync;
     }
@@ -103,11 +106,11 @@ else
             try
             {
                 var parameters = new DialogParameters<HostKeyDialog> { { d => d.Key, key } };
-                var certificate = key.Algorithm == "TLS-Zertifikat";
+                var certificate = key.Algorithm == BoltShell.Core.Rdp.RdpProxy.CertificateAlgorithm;
                 var dialog = await Dialogs.ShowAsync<HostKeyDialog>(
                     key.Status == HostKeyStatus.Changed
-                        ? certificate ? "WARNUNG: RDP-Zertifikat hat sich geändert" : "WARNUNG: Host-Key hat sich geändert"
-                        : certificate ? "Unbekanntes RDP-Zertifikat" : "Unbekannter Host",
+                        ? certificate ? Tr("WARNING: RDP certificate has changed") : Tr("WARNING: host key has changed")
+                        : certificate ? Tr("Unknown RDP certificate") : Tr("Unknown host"),
                     parameters, new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
                 var result = await dialog.Result;
                 answer.TrySetResult(result is { Canceled: false, Data: true });
@@ -120,12 +123,16 @@ else
         return answer.Task;
     }
 
+    // Cascaded to every component (LocalizedComponent), so switching the language re-renders the whole UI.
+    private static string CurrentLanguage => BoltShell.Core.Localization.Texts.Language;
+
     private void OnChanged() => InvokeAsync(StateHasChanged);
 
     public void Dispose()
     {
         Accounts.Changed -= OnChanged;
         Window.Changed -= OnChanged;
+        BoltShell.Core.Localization.Texts.Changed -= OnChanged;
         Connector.HostKeyPrompt = null;
         RdpProxy.CertificatePrompt = null;
         _windowRef?.Dispose();

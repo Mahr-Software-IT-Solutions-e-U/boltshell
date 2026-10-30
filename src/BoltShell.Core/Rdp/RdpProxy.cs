@@ -34,6 +34,9 @@ public sealed record RdpCertificateObservation(string FingerprintSha256, string?
 /// </summary>
 public sealed class RdpProxy(KnownHostsStore trustStore, ILogger<RdpProxy> logger) : IAsyncDisposable
 {
+    /// <summary>Algorithm name of RDP certificates in the local trust store (persisted, therefore not translated).</summary>
+    public const string CertificateAlgorithm = "TLS-Zertifikat";
+
     private const string WebSocketGuid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
     private readonly ConcurrentDictionary<string, RdpProxySession> _sessions = new();
@@ -322,7 +325,7 @@ public sealed class RdpProxy(KnownHostsStore trustStore, ILogger<RdpProxy> logge
             return ok;
         }
 
-        var info = trustStore.Check(spec.Target.CertificateId, "TLS-Zertifikat", fingerprint);
+        var info = trustStore.Check(spec.Target.CertificateId, CertificateAlgorithm, fingerprint);
         if (info.Status == HostKeyStatus.Trusted)
             return true;
         var accepted = CertificatePrompt is { } prompt && await prompt(info);

@@ -30,4 +30,8 @@
     <None Include="..\..\LICENSE;..\..\THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Link="%(Filename)%(Extension)" />
     <None Include="..\..\licenses\*.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Link="licenses\%(Filename)%(Extension)" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Translation catalogs, loaded by BoltShell.Core.Localization.Texts -->
+    <EmbeddedResource Include="i18n/**/*.json" LogicalName="i18n/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
 </Project>
