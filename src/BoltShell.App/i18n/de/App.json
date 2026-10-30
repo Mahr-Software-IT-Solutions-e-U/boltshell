@@ -4,5 +4,7 @@
   "Unknown RDP certificate": "Unbekanntes RDP-Zertifikat",
   "Unknown host": "Unbekannter Host",
   "An unexpected error has occurred.": "Ein unerwarteter Fehler ist aufgetreten.",
-  "Reload": "Neu laden"
+  "Reload": "Neu laden",
+  "Sign-in to {0}": "Anmeldung an {0}",
+  "The server asks for additional input, e.g. a one-time code.": "Der Server verlangt eine zusätzliche Eingabe, z. B. einen Einmalcode."
 }

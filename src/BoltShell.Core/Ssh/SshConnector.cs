@@ -26,6 +26,22 @@ public sealed class HostKeyRejectedException(HostKeyInfo key, string message, bo
     public IReadOnlyList<string> ExpectedFingerprints { get; } = expected ?? [];
 }
 
+/// <summary>A keyboard-interactive question the stored credentials cannot answer (e.g. a one-time code).</summary>
+/// <param name="Target">user@host:port, for display.</param>
+/// <param name="Echo">False for secret input.</param>
+public sealed record KeyboardQuestion(string Target, string? Instruction, string Question, bool Echo);
+
+internal enum KeyboardAnswer { Totp, User }
+
+/// <summary>Supplies an answer the static credentials do not have: a TOTP code or the user's input.</summary>
+internal delegate string? KeyboardResponder(KeyboardQuestion question, KeyboardAnswer kind);
+
+internal sealed class KeyboardState
+{
+    public bool PasswordSent { get; set; }
+    public bool TotpSent { get; set; }
+}
+
 /// <summary>
 /// Creates SSH.NET clients for a <see cref="SshConnectionSpec"/> and enforces host key verification.
 /// </summary>
@@ -37,7 +53,16 @@ public sealed class SshConnector(KnownHostsStore knownHosts, ILogger<SshConnecto
     /// </summary>
     public Func<HostKeyInfo, Task<bool>>? HostKeyPrompt { get; set; }
 
+    /// <summary>
+    /// Asked for keyboard-interactive questions that neither the password nor a TOTP from Passbolt can answer
+    /// (e.g. a code from a hardware token). Returns null to cancel. Without a handler such questions get an empty answer.
+    /// </summary>
+    public Func<KeyboardQuestion, Task<string?>>? KeyboardPrompt { get; set; }
+
     public TimeSpan KeepAliveInterval { get; set; } = TimeSpan.FromSeconds(30);
+
+    // Last TOTP sent per user@host: many servers refuse a code twice (e.g. a second connection for SFTP right away).
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _lastTotp = new();
 
     // Why the host key of a client was rejected; SSH.NET itself only reports a generic key exchange failure.
     private readonly ConditionalWeakTable<BaseClient, HostKeyRejectedException> _rejections = new();
@@ -61,11 +86,39 @@ public sealed class SshConnector(KnownHostsStore knownHosts, ILogger<SshConnecto
         }
     }
 
-    public SshClient CreateSshClient(SshConnectionSpec spec) => Configure(new SshClient(BuildConnectionInfo(spec)), spec);
+    public SshClient CreateSshClient(SshConnectionSpec spec) => Configure(new SshClient(BuildConnectionInfo(spec, Responder(spec))), spec);
 
-    public SftpClient CreateSftpClient(SshConnectionSpec spec) => Configure(new SftpClient(BuildConnectionInfo(spec)), spec);
+    public SftpClient CreateSftpClient(SshConnectionSpec spec) => Configure(new SftpClient(BuildConnectionInfo(spec, Responder(spec))), spec);
 
-    public ScpClient CreateScpClient(SshConnectionSpec spec) => Configure(new ScpClient(BuildConnectionInfo(spec), RemotePathTransformation.ShellQuote), spec);
+    public ScpClient CreateScpClient(SshConnectionSpec spec) =>
+        Configure(new ScpClient(BuildConnectionInfo(spec, Responder(spec)), RemotePathTransformation.ShellQuote), spec);
+
+    // Answers keyboard-interactive questions: password and TOTP from Passbolt first, everything else via KeyboardPrompt.
+    // Runs on SSH.NET's connect thread, so blocking (TOTP wait, UI prompt) is fine here.
+    private KeyboardResponder Responder(SshConnectionSpec spec) => (question, kind) =>
+    {
+        if (kind == KeyboardAnswer.Totp && spec.Credentials.Totp is { } totp)
+            return NextTotp(spec, totp);
+        if (KeyboardPrompt is not { } prompt)
+            return null;
+        logger.LogInformation("Server {Host} asks: {Question}", spec.Target.HostAndPort, question.Question);
+        return prompt(question).GetAwaiter().GetResult();
+    };
+
+    private string NextTotp(SshConnectionSpec spec, Crypto.TotpSettings totp)
+    {
+        var key = $"{spec.Username}@{spec.Target.HostKeyId}";
+        var now = DateTimeOffset.UtcNow;
+        var code = totp.Code(now);
+        if (_lastTotp.TryGetValue(key, out var last) && last == code)
+        {
+            // Already used for this login: wait for the next code instead of being rejected.
+            Thread.Sleep(totp.UntilNextPeriod(now) + TimeSpan.FromMilliseconds(500));
+            code = totp.Code(DateTimeOffset.UtcNow);
+        }
+        _lastTotp[key] = code;
+        return code;
+    }
 
     private T Configure<T>(T client, SshConnectionSpec spec) where T : BaseClient
     {
@@ -115,7 +168,7 @@ public sealed class SshConnector(KnownHostsStore knownHosts, ILogger<SshConnecto
         return accepted;
     }
 
-    internal static ConnectionInfo BuildConnectionInfo(SshConnectionSpec spec)
+    internal static ConnectionInfo BuildConnectionInfo(SshConnectionSpec spec, KeyboardResponder? responder = null)
     {
         var user = spec.Username;
         var creds = spec.Credentials;
@@ -125,29 +178,64 @@ public sealed class SshConnector(KnownHostsStore knownHosts, ILogger<SshConnecto
             methods.Add(new PrivateKeyAuthenticationMethod(user, LoadPrivateKey(creds.PrivateKey!, creds.KeyPassphrase)));
 
         if (creds.HasPassword)
+            methods.Add(new PasswordAuthenticationMethod(user, creds.Password!));
+
+        // Always offered: servers may ask for more after a key or password (e.g. a one-time code).
+        var keyboard = new KeyboardInteractiveAuthenticationMethod(user);
+        var state = new KeyboardState();
+        var target = $"{user}@{spec.Target.HostAndPort}";
+        keyboard.AuthenticationPrompt += (_, e) =>
         {
-            var password = creds.Password!;
-            methods.Add(new PasswordAuthenticationMethod(user, password));
-            var keyboard = new KeyboardInteractiveAuthenticationMethod(user);
-            keyboard.AuthenticationPrompt += (_, e) =>
+            foreach (var prompt in e.Prompts)
             {
-                foreach (var prompt in e.Prompts)
-                {
-                    if (prompt.Request.Contains("password", StringComparison.OrdinalIgnoreCase))
-                        prompt.Response = password;
-                }
-            };
-            methods.Add(keyboard);
-        }
+                var question = new KeyboardQuestion(target, string.IsNullOrWhiteSpace(e.Instruction) ? null : e.Instruction.Trim(),
+                    prompt.Request.Trim(), prompt.IsEchoed);
+                prompt.Response = Answer(question, creds, state, responder) ?? "";
+            }
+        };
 
         if (methods.Count == 0)
             throw new InvalidOperationException(Tr("No password or private key available for '{0}'.", spec.DisplayName));
 
+        methods.Add(keyboard);
         return new ConnectionInfo(spec.Target.Host, spec.Target.Port, user, methods.ToArray())
         {
             Timeout = TimeSpan.FromSeconds(15),
         };
     }
+
+    /// <summary>
+    /// Picks the answer for one keyboard-interactive question: the Passbolt password for the first password question,
+    /// a TOTP code (via <paramref name="responder"/>) for a code question if Passbolt has one, otherwise the user.
+    /// The password is sent at most once, so a rejected password leads to a question instead of a loop.
+    /// </summary>
+    internal static string? Answer(KeyboardQuestion question, SshCredentials creds, KeyboardState state, KeyboardResponder? responder)
+    {
+        if (IsCodeQuestion(question.Question))
+        {
+            if (creds.Totp is not null && !state.TotpSent && responder is not null)
+            {
+                state.TotpSent = true;
+                return responder(question, KeyboardAnswer.Totp);
+            }
+        }
+        else if (!question.Echo && creds.HasPassword && !state.PasswordSent && IsPasswordQuestion(question.Question))
+        {
+            state.PasswordSent = true;
+            return creds.Password;
+        }
+        return responder?.Invoke(question, KeyboardAnswer.User);
+    }
+
+    private static readonly string[] PasswordWords = ["pass", "kennwort", "mot de passe", "contraseña", "senha", "wachtwoord", "hasło", "пароль"];
+    private static readonly string[] CodeWords =
+        ["code", "otp", "token", "one-time", "one time", "verification", "authenticator", "2fa", "two-factor", "einmal", "bestätigung"];
+
+    internal static bool IsCodeQuestion(string question) =>
+        CodeWords.Any(w => question.Contains(w, StringComparison.OrdinalIgnoreCase));
+
+    internal static bool IsPasswordQuestion(string question) =>
+        PasswordWords.Any(w => question.Contains(w, StringComparison.OrdinalIgnoreCase));
 
     private static PrivateKeyFile LoadPrivateKey(string key, string? passphrase)
     {

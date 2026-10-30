@@ -10,5 +10,6 @@
   "Message is not signed.": "Die Nachricht ist nicht signiert.",
   "Message was signed by an unexpected key.": "Die Nachricht wurde mit einem unerwarteten Schlüssel signiert.",
   "Invalid message signature.": "Ungültige Signatur der Nachricht.",
-  "Message integrity check failed.": "Integritätsprüfung der Nachricht fehlgeschlagen."
+  "Message integrity check failed.": "Integritätsprüfung der Nachricht fehlgeschlagen.",
+  "The TOTP secret is not valid base32.": "Das TOTP-Geheimnis ist kein gültiges Base32."
 }

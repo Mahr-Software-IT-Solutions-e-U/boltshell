@@ -436,10 +436,20 @@ public sealed class PassboltClient : IDisposable
                     fields[id] = value.ToString();
             }
         }
+        // v5 "password with TOTP" resources carry the one-time password settings in the secret.
+        TotpSettings? totp = null;
+        if (json?["totp"] is JsonObject t && t["secret_key"]?.GetValue<string>() is { Length: > 0 } secretKey)
+        {
+            totp = new TotpSettings(secretKey,
+                t["algorithm"]?.GetValue<string>() ?? "SHA1",
+                t["digits"]?.GetValue<int>() ?? 6,
+                t["period"]?.GetValue<int>() ?? 30);
+        }
         return new PassboltSecret(
             json?["password"]?.GetValue<string>(),
             json?["description"]?.GetValue<string>(),
-            fields);
+            fields,
+            totp);
     }
 
     internal static PassboltResource ParseResource(JsonNode item, PgpKeyChain keys)
