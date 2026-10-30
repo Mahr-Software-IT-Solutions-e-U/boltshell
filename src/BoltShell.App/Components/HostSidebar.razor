@@ -65,17 +65,18 @@
                 <span class="muted" style="font-size:12px; padding:2px 8px">@(string.IsNullOrWhiteSpace(Filter) ? Tr("No resources with ssh:// or rdp://.") : Tr("No matches."))</span>
             }
 
-            @foreach (var resource in hosts)
+            @foreach (var host in hosts)
             {
-                var (isRdp, addr) = Address(resource);
-                <button type="button" @key="resource.Id"
-                        class="host-row @(resource.Id == SelectedResourceId ? "selected" : "") @(account.IsUnlocked ? "" : "locked")"
-                        title="@(string.IsNullOrEmpty(account.FolderPath(resource.FolderParentId)) ? resource.Name : account.FolderPath(resource.FolderParentId) + " / " + resource.Name)"
-                        @onclick="() => OnOpen.InvokeAsync((account, resource))">
+                var resource = host.Resource;
+                var isRdp = host.IsRdp;
+                <button type="button" @key="host.Key"
+                        class="host-row @(IsSelected(account, host) ? "selected" : "") @(account.IsUnlocked ? "" : "locked")"
+                        title="@(string.IsNullOrEmpty(account.FolderPath(resource.FolderParentId)) ? host.DisplayName : account.FolderPath(resource.FolderParentId) + " / " + host.DisplayName)"
+                        @onclick="() => OnOpen.InvokeAsync((account, host))">
                     <Icon Name="@(isRdp ? "monitor" : "server")" Color="#9AA1AC" />
                     <span style="display:flex; flex-direction:column; min-width:0; flex:1">
                         <span class="host-name">@resource.Name</span>
-                        <span class="host-addr">@addr</span>
+                        <span class="host-addr">@Address(host)</span>
                     </span>
                     @if (HasField(resource, SshConnectionMapper.HostKeyField) || HasField(resource, BoltShell.Core.Rdp.RdpConnectionMapper.CertificateField))
                     {
@@ -102,8 +103,9 @@
 
 @code {
     [Parameter] public string? Filter { get; set; }
-    [Parameter] public string? SelectedResourceId { get; set; }
-    [Parameter] public EventCallback<(AccountSession Account, PassboltResource Resource)> OnOpen { get; set; }
+    /// <summary>The active tab; its host is highlighted.</summary>
+    [Parameter] public SessionTab? SelectedTab { get; set; }
+    [Parameter] public EventCallback<(AccountSession Account, HostEntry Host)> OnOpen { get; set; }
     [Parameter] public EventCallback OnProvision { get; set; }
     [Parameter] public EventCallback OnCreateRdp { get; set; }
 
@@ -134,36 +136,40 @@
 
     protected override void OnInitialized() => Accounts.Changed += OnChanged;
 
-    private IEnumerable<PassboltResource> Filtered(AccountSession account) =>
-        account.Hosts.Where(r => Matches(account, r, Filter));
+    private IEnumerable<HostEntry> Filtered(AccountSession account) =>
+        account.Hosts.Where(h => Matches(account, h, Filter));
+
+    private bool IsSelected(AccountSession account, HostEntry host) =>
+        SelectedTab?.Is(account.Id, host.Resource.Id, host.Uri) == true
+        && (SelectedTab.HostUri is not null || HostEntry.For(host.Resource)[0].Uri == host.Uri);
 
     /// <summary>Hosts across all accounts matching a search query (every word must match).</summary>
-    public static IEnumerable<(AccountSession Account, PassboltResource Resource)> Match(AccountManager accounts, string? query) =>
-        accounts.Accounts.SelectMany(a => a.Hosts.Where(r => Matches(a, r, query)).Select(r => (a, r)));
+    public static IEnumerable<(AccountSession Account, HostEntry Host)> Match(AccountManager accounts, string? query) =>
+        accounts.Accounts.SelectMany(a => a.Hosts.Where(h => Matches(a, h, query)).Select(h => (a, h)));
 
-    private static bool Matches(AccountSession account, PassboltResource r, string? query)
+    private static bool Matches(AccountSession account, HostEntry host, string? query)
     {
         if (string.IsNullOrWhiteSpace(query))
             return true;
-        // A full user@host:port query should still find the matching resource.
-        if (SshTarget.TryParseQuick(query, out var target)
-            && r.Uris.Any(u => SshTarget.TryParse(u, out var t) && string.Equals(t.Host, target.Host, StringComparison.OrdinalIgnoreCase) && t.Port == target.Port))
+        var r = host.Resource;
+        // A full user@host:port query should still find the matching host.
+        if (!host.IsRdp && SshTarget.TryParseQuick(query, out var target)
+            && string.Equals(host.Host, target.Host, StringComparison.OrdinalIgnoreCase) && host.Port == target.Port)
             return true;
         return query.Split(' ', StringSplitOptions.RemoveEmptyEntries).All(term =>
             r.Name.Contains(term, StringComparison.OrdinalIgnoreCase)
             || r.Username?.Contains(term, StringComparison.OrdinalIgnoreCase) == true
-            || r.Uris.Any(u => u.Contains(term, StringComparison.OrdinalIgnoreCase))
+            || host.Uri.Contains(term, StringComparison.OrdinalIgnoreCase)
             || account.FolderPath(r.FolderParentId).Contains(term, StringComparison.OrdinalIgnoreCase));
     }
 
-    // SSH wins if a resource has both kinds of URI.
-    private static (bool IsRdp, string Address) Address(PassboltResource r)
+    private static string Address(HostEntry host)
     {
-        if (r.Uris.Select(u => SshTarget.TryParse(u, out var t) ? t : null).FirstOrDefault(t => t is not null) is { } ssh)
-            return (false, $"{ssh.Username ?? r.Username}@{ssh.HostAndPort}");
-        var rdp = r.Uris.Select(u => BoltShell.Core.Rdp.RdpTarget.TryParse(u, out var t) ? t : null).First(t => t is not null)!;
-        var user = rdp.Username ?? r.Username;
-        return (true, $"{(rdp.Domain is null ? "" : rdp.Domain + "\\")}{user}@{rdp.HostAndPort}");
+        if (!host.IsRdp && SshTarget.TryParse(host.Uri, out var ssh))
+            return $"{ssh.Username ?? host.Resource.Username}@{ssh.HostAndPort}";
+        BoltShell.Core.Rdp.RdpTarget.TryParse(host.Uri, out var rdp);
+        var user = rdp.Username ?? host.Resource.Username;
+        return $"{(rdp.Domain is null ? "" : rdp.Domain + "\\")}{user}@{rdp.HostAndPort}";
     }
 
     private static bool HasField(PassboltResource r, string key) =>

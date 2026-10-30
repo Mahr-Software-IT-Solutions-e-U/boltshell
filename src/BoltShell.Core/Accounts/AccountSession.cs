@@ -33,9 +33,8 @@ public sealed class AccountSession : IDisposable
     public IReadOnlyList<PassboltResource> Resources { get; private set; } = [];
     public IReadOnlyDictionary<string, PassboltFolder> Folders { get; private set; } = new Dictionary<string, PassboltFolder>();
 
-    /// <summary>Resources that are hosts: an <c>ssh://</c> or <c>rdp://</c> URI.</summary>
-    public IEnumerable<PassboltResource> Hosts =>
-        Resources.Where(r => SshConnectionMapper.HasSshTarget(r) || RdpConnectionMapper.HasRdpTarget(r));
+    /// <summary>Every <c>ssh://</c> and <c>rdp://</c> URI of the resources, each as its own host.</summary>
+    public IEnumerable<HostEntry> Hosts => Resources.SelectMany(HostEntry.For);
 
     public event Action? Changed;
 
@@ -93,11 +92,11 @@ public sealed class AccountSession : IDisposable
     }
 
     /// <summary>Decrypts the resource's secret and turns it into SSH connection parameters.</summary>
-    public async Task<SshConnectionSpec> GetConnectionSpecAsync(PassboltResource resource, CancellationToken ct = default)
+    public async Task<SshConnectionSpec> GetConnectionSpecAsync(PassboltResource resource, string? uri = null, CancellationToken ct = default)
     {
         var secret = await RequireUnlockedClient().GetSecretAsync(resource, ct);
         Touch();
-        return SshConnectionMapper.Map(resource, secret);
+        return SshConnectionMapper.Map(resource, secret, uri);
     }
 
     /// <summary>Creates a resource (in a folder, shared like the folder) and reloads the resource list.</summary>
@@ -111,19 +110,23 @@ public sealed class AccountSession : IDisposable
     }
 
     /// <summary>Adds or replaces a text custom field of a resource (e.g. the host identity) and reloads the resource list.</summary>
-    public async Task SetCustomFieldAsync(PassboltResource resource, string key, string value, CancellationToken ct = default)
+    public Task SetCustomFieldAsync(PassboltResource resource, string key, string value, CancellationToken ct = default) =>
+        UpdateCustomFieldAsync(resource, key, _ => value, ct);
+
+    /// <summary>Like <see cref="SetCustomFieldAsync"/>, computing the new value from the current one (null if missing).</summary>
+    public async Task UpdateCustomFieldAsync(PassboltResource resource, string key, Func<string?, string> update, CancellationToken ct = default)
     {
-        await RequireUnlockedClient().SetCustomFieldAsync(resource.Id, key, value, ct);
+        await RequireUnlockedClient().UpdateCustomFieldAsync(resource.Id, key, update, ct);
         Touch();
         await RefreshAsync(ct);
     }
 
     /// <summary>Decrypts the resource's secret and turns it into RDP connection parameters.</summary>
-    public async Task<RdpConnectionSpec> GetRdpSpecAsync(PassboltResource resource, CancellationToken ct = default)
+    public async Task<RdpConnectionSpec> GetRdpSpecAsync(PassboltResource resource, string? uri = null, CancellationToken ct = default)
     {
         var secret = await RequireUnlockedClient().GetSecretAsync(resource, ct);
         Touch();
-        return RdpConnectionMapper.Map(resource, secret);
+        return RdpConnectionMapper.Map(resource, secret, uri);
     }
 
     /// <summary>Folder path like "Server / Odoo", or empty for the root.</summary>

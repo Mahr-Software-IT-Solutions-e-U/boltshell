@@ -38,7 +38,7 @@
     </header>
 
     <div class="ws-body">
-        <HostSidebar Filter="@_query" SelectedResourceId="@State.Active?.ResourceId" OnOpen="OpenHostAsync" OnProvision="OnProvisionHost" OnCreateRdp="OnCreateRdpHost" />
+        <HostSidebar Filter="@_query" SelectedTab="@State.Active" OnOpen="OpenHostAsync" OnProvision="OnProvisionHost" OnCreateRdp="OnCreateRdpHost" />
 
         <main class="ws-main">
             <div class="tabbar" role="tablist" aria-label="@Tr("Sessions")">
@@ -166,16 +166,17 @@
 
     private Task InstallUpdateAsync() => UpdateCard.InstallAsync(Updates, State, Dialogs, Snackbar);
 
-    private async Task OpenHostAsync((AccountSession Account, PassboltResource Resource) host)
+    private async Task OpenHostAsync((AccountSession Account, HostEntry Host) selection)
     {
-        var (account, resource) = host;
+        var (account, host) = selection;
+        var resource = host.Resource;
         if (!await UnlockDialog.ShowAsync(Dialogs, account))
             return;
-        if (!SshConnectionMapper.HasSshTarget(resource) && BoltShell.Core.Rdp.RdpConnectionMapper.HasRdpTarget(resource))
+        if (host.IsRdp)
         {
             try
             {
-                State.OpenRdp(RdpProxy, await account.GetRdpSpecAsync(resource), account.Id, resource.Id);
+                State.OpenRdp(RdpProxy, await account.GetRdpSpecAsync(resource, host.Uri), account.Id, resource.Id, host.Uri);
             }
             catch (Exception ex)
             {
@@ -186,27 +187,27 @@
         SshConnectionSpec spec;
         try
         {
-            spec = await account.GetConnectionSpecAsync(resource);
+            spec = await account.GetConnectionSpecAsync(resource, host.Uri);
         }
         catch (Exception ex)
         {
             Snackbar.Add($"{resource.Name}: {ex.Message}", Severity.Error);
             return;
         }
-        AddTab(spec, account.Id, resource.Id);
+        AddTab(spec, account.Id, resource.Id, host.Uri);
     }
 
-    private void AddTab(SshConnectionSpec spec, string? accountId, string? resourceId) =>
-        State.Open(Sessions, spec, accountId, resourceId);
+    private void AddTab(SshConnectionSpec spec, string? accountId, string? resourceId, string? hostUri = null) =>
+        State.Open(Sessions, spec, accountId, resourceId, hostUri);
 
     private async Task DuplicateActive()
     {
         if (State.Active is not { } tab || !await EnsureCredentialsAsync(tab))
             return;
         if (tab.IsRdp)
-            State.OpenRdp(RdpProxy, tab.Rdp!.Spec, tab.AccountId, tab.ResourceId);
+            State.OpenRdp(RdpProxy, tab.Rdp!.Spec, tab.AccountId, tab.ResourceId, tab.HostUri);
         else if (tab.Spec is { } spec)
-            AddTab(spec, tab.AccountId, tab.ResourceId);
+            AddTab(spec, tab.AccountId, tab.ResourceId, tab.HostUri);
     }
 
     /// <summary>
@@ -232,9 +233,9 @@
         try
         {
             if (tab.IsRdp)
-                State.RestoreCredentials(tab, null, await account.GetRdpSpecAsync(resource), RdpProxy);
+                State.RestoreCredentials(tab, null, await account.GetRdpSpecAsync(resource, tab.HostUri), RdpProxy);
             else
-                State.RestoreCredentials(tab, await account.GetConnectionSpecAsync(resource), null, RdpProxy);
+                State.RestoreCredentials(tab, await account.GetConnectionSpecAsync(resource, tab.HostUri), null, RdpProxy);
             return true;
         }
         catch (Exception ex)

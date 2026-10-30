@@ -106,14 +106,25 @@
             return;
         }
 
+        // A resource with several hosts keeps one entry per host in the field; only this host's entry is replaced.
+        var shared = HostEntry.For(resource).Count > 1;
         _saving = true;
         try
         {
-            await account.SetCustomFieldAsync(resource, identity.Field, identity.Value);
             if (identity.IsRdp)
-                State.UpdateHostIdentity(account.Id, resource.Id, null, [identity.Value], RdpProxy);
+            {
+                var target = Tab.Rdp!.Spec.Target;
+                await account.UpdateCustomFieldAsync(resource, identity.Field,
+                    current => RdpConnectionMapper.WithCertificate(current, target, identity.Value, shared));
+                State.UpdateHostIdentity(account.Id, resource.Id, Tab.HostUri, null, [identity.Value], RdpProxy);
+            }
             else
-                State.UpdateHostIdentity(account.Id, resource.Id, SshConnectionMapper.ParseHostKeys(identity.Value), null, RdpProxy);
+            {
+                var target = Tab.Spec!.Target;
+                await account.UpdateCustomFieldAsync(resource, identity.Field,
+                    current => SshConnectionMapper.WithHostKey(current, target, identity.Value, shared));
+                State.UpdateHostIdentity(account.Id, resource.Id, Tab.HostUri, SshConnectionMapper.ParseHostKeys(identity.Value), null, RdpProxy);
+            }
             Snackbar.Add(identity.Mismatch
                 ? Tr("{0} updated in Passbolt – please reconnect.", identity.Field)
                 : Tr("{0} stored in Passbolt. The identity is now checked against Passbolt.", identity.Field), Severity.Success);

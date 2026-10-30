@@ -53,6 +53,13 @@ Without `ssh_host_key` the app asks on first connect and remembers the key (trus
 
 A key passphrase is never sent to the server as a login password.
 
+**Several hosts in one resource:** every `ssh://` and `rdp://` URI of a resource (Passbolt v5 "additional URIs") is
+its own host in the sidebar, with the resource's credentials – e.g. a cluster sharing a key, or a Windows server
+reachable via RDP and SSH. The host identity fields then hold one entry per host, as known_hosts lines
+(`host ssh-ed25519 AAAA…`, `[host]:2222 …`, wildcards and hashed entries work) or `host fingerprint` for
+`rdp_cert_sha256`. Entries without a host apply to hosts without their own entry. "Store in Passbolt" adds or
+replaces only the entry of the connected host.
+
 ### RDP hosts
 
 | Passbolt field | Content |

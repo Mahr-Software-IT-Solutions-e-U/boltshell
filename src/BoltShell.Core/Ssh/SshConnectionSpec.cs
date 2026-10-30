@@ -59,10 +59,14 @@ public static partial class SshConnectionMapper
         resource.Uris.Any(u => SshTarget.TryParse(u, out _));
 
     /// <summary>Builds the connection spec. A key passphrase is never offered to the server as a login password.</summary>
-    public static SshConnectionSpec Map(PassboltResource resource, PassboltSecret secret)
+    /// <param name="uri">The <c>ssh://</c> URI to connect to (see <see cref="Accounts.HostEntry"/>); null for the first one.</param>
+    public static SshConnectionSpec Map(PassboltResource resource, PassboltSecret secret, string? uri = null)
     {
-        var target = resource.Uris.Select(u => SshTarget.TryParse(u, out var t) ? t : null).FirstOrDefault(t => t is not null)
+        var target = (uri is null
+                         ? resource.Uris.Select(u => SshTarget.TryParse(u, out var t) ? t : null).FirstOrDefault(t => t is not null)
+                         : resource.Uris.Contains(uri) && SshTarget.TryParse(uri, out var chosen) ? chosen : null)
                      ?? throw new InvalidOperationException(Tr("Resource '{0}' has no ssh:// URI.", resource.Name));
+        var shared = Accounts.HostEntry.For(resource).Count > 1;
 
         var username = target.Username ?? resource.Username
                        ?? throw new InvalidOperationException(Tr("Resource '{0}' has no username.", resource.Name));
@@ -74,7 +78,7 @@ public static partial class SshConnectionMapper
                 .Select(f => NullIfEmpty(secret.CustomFieldValues.GetValueOrDefault(f.Id)) ?? NullIfEmpty(f.MetadataValue))
                 .FirstOrDefault(v => v is not null);
 
-        var hostKeys = ParseHostKeys(FieldValue(HostKeyField));
+        var hostKeys = ParseHostKeys(FieldValue(HostKeyField), shared ? target : null);
         var publicKey = FieldValue(PublicKeyField)?.Trim();
         var password = NullIfEmpty(secret.Password);
         var passphraseField = FieldValue(PassphraseField);
@@ -92,30 +96,37 @@ public static partial class SshConnectionMapper
         else
             credentials = new SshCredentials(null, privateKey, password);
 
-        return new SshConnectionSpec(resource.Name, target, username, credentials with { Totp = secret.Totp }, hostKeys, publicKey);
+        return new SshConnectionSpec(shared ? $"{resource.Name} ({target.Host})" : resource.Name, target, username,
+            credentials with { Totp = secret.Totp }, hostKeys, publicKey);
     }
 
     /// <summary>
     /// Parses the host identity field. One entry per line; accepted forms:
-    /// <c>SHA256:base64</c>, <c>ssh-ed25519 AAAA… [comment]</c> and known_hosts lines <c>host ssh-ed25519 AAAA…</c>.
+    /// <c>SHA256:base64</c>, <c>ssh-ed25519 AAAA… [comment]</c> and known_hosts lines <c>host ssh-ed25519 AAAA…</c>
+    /// (also <c>host SHA256:…</c>).
     /// </summary>
-    public static IReadOnlyList<ExpectedHostKey> ParseHostKeys(string? text)
+    /// <param name="target">
+    /// For resources with several hosts: only entries whose host pattern matches the target count, else the entries
+    /// without host pattern. If neither exists, all entries count, so a pin never silently disappears.
+    /// </param>
+    public static IReadOnlyList<ExpectedHostKey> ParseHostKeys(string? text, SshTarget? target = null)
     {
-        var result = new List<ExpectedHostKey>();
+        var entries = new List<(string? Patterns, ExpectedHostKey Key)>();
         if (string.IsNullOrWhiteSpace(text))
-            return result;
+            return [];
 
         foreach (var raw in text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             if (raw.StartsWith('#'))
                 continue;
             var parts = raw.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            var patterns = LinePatterns(parts);
 
             // A fingerprint, optionally preceded by the algorithm ("ssh-ed25519 SHA256:…").
             var fingerprint = parts.FirstOrDefault(p => p.StartsWith("SHA256:", StringComparison.OrdinalIgnoreCase));
             if (fingerprint is not null)
             {
-                result.Add(new ExpectedHostKey(parts.FirstOrDefault(IsKeyAlgorithm), fingerprint[7..].TrimEnd('=')));
+                entries.Add((patterns, new ExpectedHostKey(parts.FirstOrDefault(IsKeyAlgorithm), fingerprint[7..].TrimEnd('='))));
                 continue;
             }
 
@@ -132,9 +143,39 @@ public static partial class SshConnectionMapper
             {
                 throw new FormatException(Tr("Invalid base64 in {0}: '{1}'.", HostKeyField, raw));
             }
-            result.Add(new ExpectedHostKey(parts[index], Convert.ToBase64String(SHA256.HashData(blob)).TrimEnd('=')));
+            entries.Add((patterns, new ExpectedHostKey(parts[index], Convert.ToBase64String(SHA256.HashData(blob)).TrimEnd('='))));
         }
-        return result;
+
+        if (target is null)
+            return entries.Select(e => e.Key).ToList();
+        var forTarget = entries.Where(e => e.Patterns is not null && HostPatterns.Matches(e.Patterns, target.Host, target.Port, 22)).ToList();
+        if (forTarget.Count == 0)
+            forTarget = entries.Where(e => e.Patterns is null).ToList();
+        return (forTarget.Count > 0 ? forTarget : entries).Select(e => e.Key).ToList();
+    }
+
+    /// <summary>
+    /// The host identity field after storing <paramref name="keyLine"/> (<c>ssh-ed25519 AAAA…</c>) for <paramref name="target"/>.
+    /// A resource with one host gets just the key; with several hosts, the entry for this host is added or replaced
+    /// as a known_hosts line and the other hosts' entries stay.
+    /// </summary>
+    public static string WithHostKey(string? existing, SshTarget target, string keyLine, bool sharedResource)
+    {
+        if (!sharedResource)
+            return keyLine;
+        var kept = (existing ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(line => LinePatterns(line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)) is not { } patterns
+                           || !HostPatterns.Matches(patterns, target.Host, target.Port, 22));
+        return string.Join("\n", kept.Append($"{HostPatterns.For(target.Host, target.Port, 22)} {keyLine}"));
+    }
+
+    // Host patterns of a known_hosts line (after an optional @marker), or null if the line starts with the key.
+    private static string? LinePatterns(string[] parts)
+    {
+        var first = parts.Length > 0 && parts[0].StartsWith('@') ? 1 : 0;
+        if (parts.Length <= first + 1 || IsKeyAlgorithm(parts[first]) || parts[first].StartsWith("SHA256:", StringComparison.OrdinalIgnoreCase))
+            return null;
+        return parts[first];
     }
 
     /// <summary>True if the private key needs a passphrase. Unparsable keys count as encrypted (the safe choice).</summary>
