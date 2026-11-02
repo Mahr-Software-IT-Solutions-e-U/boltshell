@@ -31,7 +31,16 @@ public sealed record AppSettings
     public string? DownloadDirectory { get; init; }
 
     public HashSet<string> FavoriteResourceIds { get; init; } = [];
+
+    /// <summary>Personal host groups (only on this computer).</summary>
+    public List<HostGroup> HostGroups { get; init; } = [];
+
+    /// <summary>Collapsed folders and groups in the host list.</summary>
+    public HashSet<string> CollapsedSidebarNodes { get; init; } = [];
 }
+
+/// <summary>A personal group of hosts. Members are <see cref="HostGroupStore.MemberKey"/> values.</summary>
+public sealed record HostGroup(string Id, string Name, List<string> Members);
 
 /// <summary>Stores <see cref="AppSettings"/> as JSON in the per-user config directory.</summary>
 public sealed class SettingsStore

@@ -16,6 +16,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<SessionManager>();
         services.AddSingleton<AccountManager>();
         services.AddSingleton<RdpProxy>();
+        services.AddSingleton<HostGroupStore>();
         return services;
     }
 }

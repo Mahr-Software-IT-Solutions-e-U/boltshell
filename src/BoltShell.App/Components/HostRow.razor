@@ -1,0 +1,52 @@
+@* One host in the sidebar (folder tree or personal group). Right-click opens the group menu. *@
+<button type="button" class="host-row @(Selected ? "selected" : "") @(Account.IsUnlocked ? "" : "locked")"
+        style="padding-left:@(8 + Indent * 16)px"
+        title="@Title" @onclick="OnOpen" @oncontextmenu="OnContextMenu" @oncontextmenu:preventDefault>
+    <Icon Name="@(Host.IsRdp ? "monitor" : "server")" Color="#9AA1AC" />
+    <span style="display:flex; flex-direction:column; min-width:0; flex:1">
+        <span class="host-name">@(Host.Label is null ? Host.Resource.Name : Host.DisplayName)</span>
+        <span class="host-addr">@(AccountLabel is null ? Address(Host) : AccountLabel + " · " + Address(Host))</span>
+    </span>
+    @if (HasField(Host.Resource, SshConnectionMapper.HostKeyField) || HasField(Host.Resource, RdpConnectionMapper.CertificateField))
+    {
+        <span title="@Tr("Host identity stored in Passbolt")" style="color:#7EE2A8; display:inline-flex"><Icon Name="shield" Size="13" /></span>
+    }
+    @if (Host.IsRdp)
+    {
+        <span class="tag">rdp</span>
+    }
+    else if (HasField(Host.Resource, SshConnectionMapper.PrivateKeyField))
+    {
+        <span class="tag">key</span>
+    }
+</button>
+
+@code {
+    [Parameter, EditorRequired] public AccountSession Account { get; set; } = null!;
+    [Parameter, EditorRequired] public HostEntry Host { get; set; } = null!;
+    [Parameter] public bool Selected { get; set; }
+    [Parameter] public int Indent { get; set; }
+
+    /// <summary>Shown before the address where hosts of several accounts are mixed (personal groups).</summary>
+    [Parameter] public string? AccountLabel { get; set; }
+
+    [Parameter] public EventCallback OnOpen { get; set; }
+    [Parameter] public EventCallback<MouseEventArgs> OnContextMenu { get; set; }
+
+    private string Title =>
+        string.IsNullOrEmpty(Account.FolderPath(Host.Resource.FolderParentId))
+            ? Host.DisplayName
+            : Account.FolderPath(Host.Resource.FolderParentId) + " / " + Host.DisplayName;
+
+    private static string Address(HostEntry host)
+    {
+        if (!host.IsRdp && SshTarget.TryParse(host.Uri, out var ssh))
+            return $"{ssh.Username ?? host.Resource.Username}@{ssh.HostAndPort}";
+        RdpTarget.TryParse(host.Uri, out var rdp);
+        var user = rdp.Username ?? host.Resource.Username;
+        return $"{(rdp.Domain is null ? "" : rdp.Domain + "\\")}{user}@{rdp.HostAndPort}";
+    }
+
+    private static bool HasField(PassboltResource r, string key) =>
+        r.CustomFields.Any(f => string.Equals(f.Key.Trim(), key, StringComparison.OrdinalIgnoreCase));
+}

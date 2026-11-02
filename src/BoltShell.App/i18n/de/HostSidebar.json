@@ -15,5 +15,17 @@
   "No matches.": "Keine Treffer.",
   "Host identity stored in Passbolt": "Host-Identität in Passbolt hinterlegt",
   "Hosts are Passbolt resources with a URI": "Hosts sind Passbolt-Ressourcen mit einer URI",
-  "or": "oder"
+  "or": "oder",
+  "My groups": "Meine Gruppen",
+  "Right-click to rename or delete": "Rechtsklick zum Umbenennen oder Löschen",
+  "Empty – right-click a host to add it.": "Leer – Rechtsklick auf einen Host, um ihn hinzuzufügen.",
+  "Groups for {0}": "Gruppen für {0}",
+  "New group …": "Neue Gruppe …",
+  "Rename …": "Umbenennen …",
+  "Delete group": "Gruppe löschen",
+  "New group": "Neue Gruppe",
+  "Name": "Name",
+  "Rename group": "Gruppe umbenennen",
+  "Delete the group \"{0}\"? The hosts stay in Passbolt.": "Gruppe „{0}“ löschen? Die Hosts bleiben in Passbolt erhalten.",
+  "Delete": "Löschen"
 }

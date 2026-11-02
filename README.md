@@ -18,6 +18,8 @@ Secrets are decrypted locally, only when a connection is opened.
 
 - Several Passbolt accounts at once (e.g. internal + customer), each locked/unlocked separately, auto-lock after inactivity
 - Multiple terminal sessions in tabs, each with its own connection; SFTP panel next to the terminal that can follow the shell's directory
+- Host list as a collapsible tree of the Passbolt folders, plus personal groups (right-click a host → add to a group;
+  stored only on this computer)
 - Quick connect (Ctrl+K): search hosts or connect directly to `user@host:port`
 - Passbolt login via JWT + OpenPGP, Passbolt v4 and v5 (encrypted metadata, shared metadata keys, custom fields), TOTP
 - Password, keyboard-interactive and private-key authentication (incl. encrypted keys); servers that also ask for a one-time code get it from the Passbolt TOTP of the resource, otherwise the user is asked
