@@ -1,5 +1,6 @@
 using BoltShell.Core.Accounts;
 using BoltShell.Core.Config;
+using Microsoft.Extensions.Logging.Abstractions;
 using BoltShell.Core.Passbolt;
 
 namespace BoltShell.Core.Tests;
@@ -51,43 +52,117 @@ public sealed class HostCategoryTests : IDisposable
         Assert.Equal(0, root.Count); // no visible path to the root: nothing shown, but no endless loop
     }
 
+    private HostGroupStore Store(string dir, AccountManager? accounts = null) =>
+        new(new SettingsStore(dir), accounts ?? new AccountManager(new SettingsStore(dir), NullLoggerFactory.Instance),
+            NullLogger<HostGroupStore>.Instance) { SaveDelay = TimeSpan.FromMinutes(10) };
+
     [Fact]
-    public void Groups_ArePersonalAndPersisted()
+    public void Groups_ArePerAccount_MergedByName_AndPersisted()
     {
-        var host = HostEntry.For(Res("r1", "cluster", null, "ssh://a", "ssh://b"))[1];
-        var key = HostGroupStore.MemberKey("acc-1", host);
-        var store = new HostGroupStore(new SettingsStore(_dir));
-        var changes = 0;
-        store.Changed += () => changes++;
+        var hosts = HostEntry.For(Res("r1", "cluster", null, "ssh://a", "ssh://b"));
+        using var store = Store(_dir);
 
-        var group = store.Create("  Produktion ", key);
-        store.ToggleCollapsed(HostGroupStore.GroupNode(group.Id));
-        store.ToggleCollapsed(HostGroupStore.FolderNode("acc-1", "srv"));
+        store.Create(" Produktion ", "acc-1", hosts[0].Key);
+        store.Create("produktion", "acc-2", hosts[1].Key); // same name in another account: one group
+        store.ToggleMember("Produktion", "acc-1", hosts[1].Key);
 
-        // A new store reads the same settings file.
-        var reloaded = new HostGroupStore(new SettingsStore(_dir));
-        var saved = Assert.Single(reloaded.Groups);
-        Assert.Equal(("Produktion", key), (saved.Name, Assert.Single(saved.Members)));
-        Assert.True(reloaded.IsCollapsed(HostGroupStore.GroupNode(group.Id)));
-        Assert.True(reloaded.IsCollapsed(HostGroupStore.FolderNode("acc-1", "srv")));
+        var group = Assert.Single(store.Groups);
+        Assert.Equal("Produktion", group.Name);
+        Assert.Equivalent(new[] { ("acc-1", hosts[0].Key), ("acc-2", hosts[1].Key), ("acc-1", hosts[1].Key) }, group.Members, strict: true);
+        Assert.True(store.IsGrouped("acc-1", hosts[1].Key));
+        Assert.False(store.IsGrouped("acc-2", hosts[0].Key));
 
-        reloaded.ToggleMember(group.Id, key);
-        Assert.Empty(reloaded.Groups[0].Members);
-        reloaded.ToggleMember(group.Id, key);
-        reloaded.Rename(group.Id, "Prod");
-        Assert.Equal(("Prod", 1), (reloaded.Groups[0].Name, reloaded.Groups[0].Members.Count));
+        store.ToggleMember("Produktion", "acc-1", hosts[1].Key);
+        Assert.False(store.IsMember("Produktion", "acc-1", hosts[1].Key));
 
-        reloaded.Delete(group.Id);
-        Assert.Empty(reloaded.Groups);
-        Assert.False(reloaded.IsCollapsed(HostGroupStore.GroupNode(group.Id)));
-        Assert.Equal(3, changes);
+        store.SetView(HostListView.Groups);
+        store.ToggleCollapsed(HostGroupStore.GroupNode("Produktion"));
+        using (var reloaded = Store(_dir))
+        {
+            Assert.Equal(HostListView.Groups, reloaded.View);
+            Assert.Equal(2, Assert.Single(reloaded.Groups).Members.Count);
+            Assert.True(reloaded.IsCollapsed(HostGroupStore.GroupNode("PRODUKTION")));
+
+            reloaded.Rename("produktion", "Prod");
+            Assert.Equal("Prod", Assert.Single(reloaded.Groups).Name);
+            reloaded.Delete("prod");
+            Assert.Empty(reloaded.Groups);
+        }
     }
 
     [Fact]
-    public void MemberKey_DistinguishesAccountsAndUris()
+    public void LegacyLocalGroups_AreMovedToTheirAccounts()
     {
-        var hosts = HostEntry.For(Res("r1", "cluster", null, "ssh://a", "ssh://b"));
-        Assert.Equal(4, new[] { "acc-1", "acc-2" }.SelectMany(a => hosts.Select(h => HostGroupStore.MemberKey(a, h))).Distinct().Count());
+        new SettingsStore(_dir).Update(s => s with
+        {
+            HostGroups = [new LegacyHostGroup("g1", "Web", ["acc-1\nr1\nssh://a", "acc-2\nr9\nssh://z"])],
+        });
+        using var store = Store(_dir);
+
+        var group = Assert.Single(store.Groups);
+        Assert.Equal([("acc-1", "r1\nssh://a"), ("acc-2", "r9\nssh://z")], group.Members);
+        Assert.Empty(new SettingsStore(_dir).Current.HostGroups);
+    }
+
+    [Fact]
+    public async Task Groups_SyncThroughAPrivatePassboltResource_BetweenDevices()
+    {
+        var server = new PassboltClientTests.FakePassboltServer();
+        AccountManager Device(string dir, out AccountSession account)
+        {
+            var manager = new AccountManager(new SettingsStore(dir), NullLoggerFactory.Instance, () => server);
+            account = manager.Add("Intern", PassboltClientTests.Account());
+            return manager;
+        }
+        var dirB = _dir + "-b";
+        try
+        {
+            using var managerA = Device(_dir, out var accountA);
+            using var managerB = Device(dirB, out var accountB);
+            using var storeA = Store(_dir, managerA);
+            using var storeB = Store(dirB, managerB);
+
+            // Device A: group while unlocked -> stored in a new private resource (not a host, not shared).
+            await accountA.UnlockAsync(TestKeys.UserPassphrase);
+            var host = Assert.Single(accountA.Hosts);
+            storeA.Create("Produktion", accountA.Id, host.Key);
+            await storeA.SyncAsync(accountA);
+            var created = Assert.Single(server.Created);
+            Assert.Null(created["folder_parent_id"]?.GetValue<string>());
+            Assert.Null(server.LastShare);
+            Assert.NotNull(accountA.PrivateSettings);
+            Assert.DoesNotContain(accountA.Hosts, h => h.Resource.Id == accountA.PrivateSettings!.Id);
+
+            // Device B: unlocking brings the groups over.
+            await accountB.UnlockAsync(TestKeys.UserPassphrase);
+            await storeB.SyncAsync(accountB);
+            Assert.True(storeB.IsMember("Produktion", accountB.Id, host.Key));
+
+            // B renames; A sees it after its next refresh (the newer copy wins).
+            storeB.Rename("Produktion", "Prod");
+            await storeB.SyncAsync(accountB);
+            Assert.Single(server.Updates);
+            await accountA.RefreshAsync();
+            await storeA.SyncAsync(accountA);
+            Assert.Equal("Prod", Assert.Single(storeA.Groups).Name);
+            Assert.Empty(storeA.SyncErrors);
+        }
+        finally
+        {
+            if (Directory.Exists(dirB))
+                Directory.Delete(dirB, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void RemoteDocument_RoundTrips_AndIgnoresGarbage()
+    {
+        var doc = new HostGroupDocument { Updated = DateTimeOffset.UtcNow, Groups = [new HostGroupEntry("Web", ["r1\nssh://a"])] };
+        var parsed = HostGroupStore.Parse(HostGroupStore.Serialize(doc))!;
+        Assert.Equal(doc.Updated, parsed.Updated);
+        Assert.Equal(["r1\nssh://a"], Assert.Single(parsed.Groups).Members);
+        Assert.Null(HostGroupStore.Parse("not json"));
+        Assert.Null(HostGroupStore.Parse(""));
     }
 
     public void Dispose()

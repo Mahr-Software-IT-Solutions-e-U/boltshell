@@ -129,6 +129,40 @@ public sealed class AccountSession : IDisposable
         return RdpConnectionMapper.Map(resource, secret, uri);
     }
 
+    /// <summary>URI that marks the user's private BoltShell resource (personal settings such as host groups).</summary>
+    public const string PrivateSettingsUri = "boltshell://private-settings";
+
+    /// <summary>The private settings resource, if this account has one.</summary>
+    public PassboltResource? PrivateSettings => Resources.FirstOrDefault(r => r.Uris.Contains(PrivateSettingsUri));
+
+    /// <summary>Reads the private settings (the encrypted note of the private resource); null if there is none yet.</summary>
+    public async Task<string?> ReadPrivateSettingsAsync(CancellationToken ct = default)
+    {
+        if (PrivateSettings is not { } resource)
+            return null;
+        var secret = await RequireUnlockedClient().GetSecretAsync(resource, ct);
+        Touch();
+        return secret.Description;
+    }
+
+    /// <summary>
+    /// Stores the private settings as the encrypted note of a resource that is not shared (created in the root folder,
+    /// so only this user has access).
+    /// </summary>
+    public async Task WritePrivateSettingsAsync(string content, CancellationToken ct = default)
+    {
+        var client = RequireUnlockedClient();
+        if (PrivateSettings is { } resource)
+            await client.UpdateSecretNoteAsync(resource.Id, content, ct);
+        else
+        {
+            await client.CreateResourceAsync(new NewResource("BoltShell (private settings)", "boltshell", [PrivateSettingsUri], "", null, [],
+                "Personal BoltShell settings (host groups). Managed by BoltShell, do not share.", content), ct);
+            await RefreshAsync(ct);
+        }
+        Touch();
+    }
+
     /// <summary>Folder path like "Server / Odoo", or empty for the root.</summary>
     public string FolderPath(string? folderId)
     {

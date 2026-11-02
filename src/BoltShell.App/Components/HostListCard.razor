@@ -1,0 +1,33 @@
+@implements IDisposable
+@inject HostGroupStore Groups
+@inject AccountManager Accounts
+
+<section class="card update-card" aria-labelledby="hostlist-title">
+    <h2 id="hostlist-title">@Tr("Host list")</h2>
+    <label class="choice">
+        <input type="radio" name="hostlist-view" checked="@(Groups.View == HostListView.Folders)" @onchange="() => Groups.SetView(HostListView.Folders)" />
+        <span>
+            <b>@Tr("Passbolt folders")</b><br />
+            <span class="muted">@Tr("Hosts in the folder structure of Passbolt – the same for everyone on the team.")</span>
+        </span>
+    </label>
+    <label class="choice">
+        <input type="radio" name="hostlist-view" checked="@(Groups.View == HostListView.Groups)" @onchange="() => Groups.SetView(HostListView.Groups)" />
+        <span>
+            <b>@Tr("My groups")</b><br />
+            <span class="muted">@Tr("Your own groups (right-click a host). Each account keeps them in a private, unshared Passbolt resource \"BoltShell (private settings)\", so they are the same on all your devices.")</span>
+        </span>
+    </label>
+    @foreach (var (accountId, error) in Groups.SyncErrors)
+    {
+        <span class="error-text" role="alert">@Tr("Groups of {0} could not be synced: {1}", Accounts.Find(accountId)?.Config.DisplayName ?? accountId, error)</span>
+    }
+</section>
+
+@code {
+    protected override void OnInitialized() => Groups.Changed += OnChanged;
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Groups.Changed -= OnChanged;
+}

@@ -53,6 +53,8 @@ public sealed record PassboltSecret(
     Crypto.TotpSettings? Totp = null);
 
 /// <summary>A resource to create. Custom fields need Passbolt v5.</summary>
+/// <param name="Description">Unencrypted description (v4) or description in the encrypted metadata (v5).</param>
+/// <param name="SecretNote">Encrypted note, stored in the secret.</param>
 public sealed record NewResource(
     string Name,
     string Username,
@@ -60,7 +62,8 @@ public sealed record NewResource(
     string? Password,
     string? FolderId,
     IReadOnlyList<NewCustomField> CustomFields,
-    string? Description = null);
+    string? Description = null,
+    string? SecretNote = null);
 
 /// <param name="Type">Passbolt custom field type: <c>text</c> or <c>password</c>.</param>
 public sealed record NewCustomField(string Key, string Value, string Type = "text");

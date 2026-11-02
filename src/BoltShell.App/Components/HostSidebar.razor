@@ -5,7 +5,7 @@
 @inject IJSRuntime JS
 @inject HostGroupStore Groups
 
-<nav class="sidebar" aria-label="@Tr("Hosts by Passbolt account")">
+<nav class="sidebar" style="flex-basis:@(Width)px" aria-label="@Tr("Hosts by Passbolt account")">
     <div class="sidebar-head">
         <span class="overline">@Tr("Hosts")</span>
         @if (!string.IsNullOrWhiteSpace(Filter))
@@ -32,20 +32,27 @@
         </div>
     </div>
 
-    @if (Groups.Groups.Count > 0)
+    @if (GroupView)
     {
         var filtering = !string.IsNullOrWhiteSpace(Filter);
         <section style="display:flex; flex-direction:column; gap:2px" aria-label="@Tr("My groups")">
-            <div class="acc-head"><span class="overline">@Tr("My groups")</span></div>
+            <div class="acc-head">
+                <span class="overline">@Tr("My groups")</span>
+                @if (Groups.SyncErrors.Count > 0)
+                {
+                    <span class="sync-warning" title="@SyncErrorText()">@Tr("Not synced")</span>
+                }
+            </div>
             @foreach (var group in Groups.Groups)
             {
                 var members = Members(group).ToList();
                 if (filtering && members.Count == 0)
                     continue;
-                var collapsed = !filtering && Groups.IsCollapsed(HostGroupStore.GroupNode(group.Id));
-                <button type="button" class="tree-row" @key="group.Id" aria-expanded="@(collapsed ? "false" : "true")"
+                var node = HostGroupStore.GroupNode(group.Name);
+                var collapsed = !filtering && Groups.IsCollapsed(node);
+                <button type="button" class="tree-row" @key="node" aria-expanded="@(collapsed ? "false" : "true")"
                         title="@Tr("Right-click to rename or delete")"
-                        @onclick="() => Groups.ToggleCollapsed(HostGroupStore.GroupNode(group.Id))"
+                        @onclick="() => Groups.ToggleCollapsed(node)"
                         @oncontextmenu="e => OpenGroupMenu(group, e)" @oncontextmenu:preventDefault>
                     <span class="chevron @(collapsed ? "" : "open")"><Icon Name="chevron" Size="12" StrokeWidth="2.4" /></span>
                     <Icon Name="folder" Size="14" Color="#F2B84B" />
@@ -56,7 +63,7 @@
                 {
                     @foreach (var (account, host) in members)
                     {
-                        <HostRow @key="group.Id + host.Key" Account="account" Host="host" Indent="1" Selected="@IsSelected(account, host)"
+                        <HostRow @key="node + account.Id + host.Key" Account="account" Host="host" Indent="1" Selected="@IsSelected(account, host)"
                                  AccountLabel="@(Accounts.Accounts.Count > 1 ? account.Config.DisplayName : null)"
                                  OnOpen="() => OnOpen.InvokeAsync((account, host))"
                                  OnContextMenu="e => OpenHostMenu((account, host, e))" />
@@ -66,6 +73,10 @@
                         <span class="muted" style="font-size:12px; padding:2px 8px 4px 24px">@Tr("Empty – right-click a host to add it.")</span>
                     }
                 }
+            }
+            @if (Groups.Groups.Count == 0)
+            {
+                <span class="muted" style="font-size:12px; padding:2px 8px">@Tr("No groups yet – right-click a host to create one.")</span>
             }
         </section>
     }
@@ -103,8 +114,36 @@
             {
                 <span class="muted" style="font-size:12px; padding:2px 8px">@(string.IsNullOrWhiteSpace(Filter) ? Tr("No resources with ssh:// or rdp://.") : Tr("No matches."))</span>
             }
-
-            @if (hosts.Count > 0)
+            else if (GroupView)
+            {
+                // Group view: the account lists the hosts that are in no group.
+                var ungrouped = hosts.Where(h => !Groups.IsGrouped(account.Id, h.Key))
+                    .OrderBy(h => h.DisplayName, StringComparer.OrdinalIgnoreCase).ToList();
+                var node = "ungrouped:" + account.Id;
+                var collapsed = string.IsNullOrWhiteSpace(Filter) && Groups.IsCollapsed(node);
+                @if (ungrouped.Count > 0)
+                {
+                    <button type="button" class="tree-row" aria-expanded="@(collapsed ? "false" : "true")" @onclick="() => Groups.ToggleCollapsed(node)">
+                        <span class="chevron @(collapsed ? "" : "open")"><Icon Name="chevron" Size="12" StrokeWidth="2.4" /></span>
+                        <span class="tree-name">@Tr("Without group")</span>
+                        <span class="tree-count">@ungrouped.Count</span>
+                    </button>
+                    @if (!collapsed)
+                    {
+                        @foreach (var host in ungrouped)
+                        {
+                            <HostRow @key="host.Key" Account="account" Host="host" Indent="1" Selected="@IsSelected(account, host)"
+                                     OnOpen="() => OnOpen.InvokeAsync((account, host))"
+                                     OnContextMenu="e => OpenHostMenu((account, host, e))" />
+                        }
+                    }
+                }
+                else
+                {
+                    <span class="muted" style="font-size:12px; padding:2px 8px">@Tr("All hosts are in groups.")</span>
+                }
+            }
+            else
             {
                 <HostFolder Account="account" Node="@HostTree.Build(account.Folders, hosts)" Filtering="@(!string.IsNullOrWhiteSpace(Filter))"
                             IsSelected="IsSelected" OnOpen="OnOpen" OnContextMenu="OpenHostMenu" />
@@ -114,19 +153,18 @@
 
     @if (_hostMenu is { } target)
     {
-        var memberKey = HostGroupStore.MemberKey(target.Account.Id, target.Host);
         <div class="menu-backdrop" @onclick="CloseMenus" @oncontextmenu="CloseMenus" @oncontextmenu:preventDefault></div>
         <div class="menu" role="menu" style="@_contextStyle" @ref="_contextMenu">
             <span class="menu-label">@Tr("Groups for {0}", target.Host.DisplayName)</span>
             @foreach (var group in Groups.Groups)
             {
-                var member = group.Members.Contains(memberKey);
+                var member = Groups.IsMember(group.Name, target.Account.Id, target.Host.Key);
                 <button type="button" role="menuitemcheckbox" aria-checked="@(member ? "true" : "false")"
-                        @onclick="() => ToggleMember(group, memberKey)">
+                        @onclick="() => ToggleMember(group, target)">
                     <span class="menu-check">@(member ? "✓" : "")</span><span>@group.Name</span>
                 </button>
             }
-            <button type="button" role="menuitem" @onclick="() => NewGroupAsync(memberKey)">
+            <button type="button" role="menuitem" @onclick="() => NewGroupAsync(target)">
                 <Icon Name="plus" Size="15" /><span>@Tr("New group …")</span>
             </button>
         </div>
@@ -149,6 +187,7 @@
 
 @code {
     [Parameter] public string? Filter { get; set; }
+    [Parameter] public int Width { get; set; } = AppSettings.DefaultSidebarWidth;
     /// <summary>The active tab; its host is highlighted.</summary>
     [Parameter] public SessionTab? SelectedTab { get; set; }
     [Parameter] public EventCallback<(AccountSession Account, HostEntry Host)> OnOpen { get; set; }
@@ -181,19 +220,25 @@
     private readonly HashSet<string> _refreshing = [];
 
     private (AccountSession Account, HostEntry Host)? _hostMenu;
-    private HostGroup? _groupMenu;
+    private MergedHostGroup? _groupMenu;
     private string _contextStyle = "";
     private ElementReference _contextMenu;
     private bool _placeMenu;
 
-    // Members of a personal group that are known (account unlocked at least once) and match the filter.
-    private IEnumerable<(AccountSession Account, HostEntry Host)> Members(HostGroup group)
+    private bool GroupView => Groups.View == HostListView.Groups;
+
+    // Members of a group that are known (account unlocked at least once) and match the filter.
+    private IEnumerable<(AccountSession Account, HostEntry Host)> Members(MergedHostGroup group)
     {
         var all = Accounts.Accounts.SelectMany(a => a.Hosts.Select(h => (Account: a, Host: h)))
-            .ToDictionary(x => HostGroupStore.MemberKey(x.Account.Id, x.Host));
+            .ToDictionary(x => (x.Account.Id, x.Host.Key));
         return group.Members.Where(all.ContainsKey).Select(key => all[key])
-            .Where(x => Matches(x.Account, x.Host, Filter));
+            .Where(x => Matches(x.Account, x.Host, Filter))
+            .OrderBy(x => x.Host.DisplayName, StringComparer.OrdinalIgnoreCase);
     }
+
+    private string SyncErrorText() => string.Join("\n", Groups.SyncErrors.Select(e =>
+        Tr("{0}: {1}", Accounts.Find(e.Key)?.Config.DisplayName ?? e.Key, e.Value)));
 
     private void OpenHostMenu((AccountSession Account, HostEntry Host, MouseEventArgs Event) target)
     {
@@ -202,7 +247,7 @@
         PlaceMenu(target.Event);
     }
 
-    private void OpenGroupMenu(HostGroup group, MouseEventArgs e)
+    private void OpenGroupMenu(MergedHostGroup group, MouseEventArgs e)
     {
         _hostMenu = null;
         _groupMenu = group;
@@ -231,33 +276,33 @@
         _groupMenu = null;
     }
 
-    private void ToggleMember(HostGroup group, string memberKey)
+    private void ToggleMember(MergedHostGroup group, (AccountSession Account, HostEntry Host) target)
     {
         CloseMenus();
-        Groups.ToggleMember(group.Id, memberKey);
+        Groups.ToggleMember(group.Name, target.Account.Id, target.Host.Key);
     }
 
-    private async Task NewGroupAsync(string memberKey)
+    private async Task NewGroupAsync((AccountSession Account, HostEntry Host) target)
     {
         CloseMenus();
         if (await TextPromptDialog.ShowAsync(Dialogs, Tr("New group"), Tr("Name")) is { } name && !string.IsNullOrWhiteSpace(name))
-            Groups.Create(name, memberKey);
+            Groups.Create(name, target.Account.Id, target.Host.Key);
     }
 
-    private async Task RenameGroupAsync(HostGroup group)
+    private async Task RenameGroupAsync(MergedHostGroup group)
     {
         CloseMenus();
         if (await TextPromptDialog.ShowAsync(Dialogs, Tr("Rename group"), Tr("Name"), initialValue: group.Name) is { } name
             && !string.IsNullOrWhiteSpace(name))
-            Groups.Rename(group.Id, name);
+            Groups.Rename(group.Name, name);
     }
 
-    private async Task DeleteGroupAsync(HostGroup group)
+    private async Task DeleteGroupAsync(MergedHostGroup group)
     {
         CloseMenus();
         if (await TextPromptDialog.ConfirmAsync(Dialogs, Tr("Delete group"),
                 Tr("Delete the group \"{0}\"? The hosts stay in Passbolt.", group.Name), Tr("Delete")))
-            Groups.Delete(group.Id);
+            Groups.Delete(group.Name);
     }
 
     protected override void OnInitialized()

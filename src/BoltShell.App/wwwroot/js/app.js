@@ -209,3 +209,46 @@ window.pbsshLanguage = (lang, errorText, reloadText) => {
     const reload = document.querySelector("#blazor-error-ui .reload");
     if (reload) reload.textContent = reloadText;
 };
+
+// Resizable host list: drag the splitter next to it (live), double-click to reset, arrow keys when focused.
+// The final width is reported to .NET, which stores it in the settings.
+window.pbsshSplitter = {
+    attach(splitter, dotnet, min, max, initial) {
+        const sidebar = splitter?.previousElementSibling;
+        if (!sidebar || splitter._pbsshSplitter) return;
+        splitter._pbsshSplitter = true;
+        const set = width => {
+            const w = Math.round(Math.min(max, Math.max(min, width)));
+            sidebar.style.flexBasis = w + "px";
+            splitter.setAttribute("aria-valuenow", w);
+            return w;
+        };
+        const save = w => dotnet.invokeMethodAsync("SaveSidebarWidth", w);
+        splitter.addEventListener("pointerdown", e => {
+            if (e.button !== 0) return;
+            e.preventDefault();
+            splitter.setPointerCapture(e.pointerId);
+            splitter.classList.add("dragging");
+            const left = sidebar.getBoundingClientRect().left;
+            let width = sidebar.getBoundingClientRect().width;
+            const move = ev => { width = set(ev.clientX - left); };
+            const up = () => {
+                splitter.removeEventListener("pointermove", move);
+                splitter.removeEventListener("pointerup", up);
+                splitter.removeEventListener("pointercancel", up);
+                splitter.classList.remove("dragging");
+                save(width);
+            };
+            splitter.addEventListener("pointermove", move);
+            splitter.addEventListener("pointerup", up);
+            splitter.addEventListener("pointercancel", up);
+        });
+        splitter.addEventListener("dblclick", () => save(set(initial)));
+        splitter.addEventListener("keydown", e => {
+            if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+            e.preventDefault();
+            const width = sidebar.getBoundingClientRect().width + (e.key === "ArrowLeft" ? -16 : 16);
+            save(set(width));
+        });
+    }
+};
