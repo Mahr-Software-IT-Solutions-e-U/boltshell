@@ -40,11 +40,23 @@
     </header>
 
     <div class="ws-body">
-        <HostSidebar Filter="@_query" Width="@Settings.Current.SidebarWidth" SelectedTab="@State.Active" OnOpen="OpenHostAsync" OnProvision="OnProvisionHost" OnCreateRdp="OnCreateRdpHost" />
-        @* Drag to resize the host list; double-click resets it, arrow keys work when focused. *@
-        <div class="sidebar-splitter" role="separator" aria-orientation="vertical" tabindex="0" aria-label="@Tr("Resize host list")"
-             aria-valuenow="@Settings.Current.SidebarWidth" aria-valuemin="@MinSidebarWidth" aria-valuemax="@MaxSidebarWidth"
-             title="@Tr("Drag to resize, double-click to reset")" @ref="_splitter"></div>
+        @if (Settings.Current.SidebarCollapsed)
+        {
+            <div class="sidebar-rail">
+                <button type="button" class="btn btn-icon btn-ghost" aria-label="@Tr("Show host list")" title="@Tr("Show host list")"
+                        @onclick="() => SetSidebarCollapsed(false)">
+                    <Icon Name="server" Size="17" />
+                </button>
+            </div>
+        }
+        else
+        {
+            <HostSidebar OnCollapse="() => SetSidebarCollapsed(true)" Filter="@_query" Width="@Settings.Current.SidebarWidth" SelectedTab="@State.Active" OnOpen="OpenHostAsync" OnProvision="OnProvisionHost" OnCreateRdp="OnCreateRdpHost" />
+            @* Drag to resize the host list; double-click resets it, arrow keys work when focused. *@
+            <div class="sidebar-splitter" role="separator" aria-orientation="vertical" tabindex="0" aria-label="@Tr("Resize host list")"
+                 aria-valuenow="@Settings.Current.SidebarWidth" aria-valuemin="@MinSidebarWidth" aria-valuemax="@MaxSidebarWidth"
+                 title="@Tr("Drag to resize, double-click to reset")" @ref="_splitter"></div>
+        }
 
         <main class="ws-main">
             <div class="tabbar" role="tablist" aria-label="@Tr("Sessions")">
@@ -363,13 +375,22 @@
     private ElementReference _splitter;
     private DotNetObjectReference<Workspace>? _self;
 
+    private bool _splitterAttached;
+
+    // The splitter is re-created when the host list is shown again, so it is attached after each such render.
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender)
-        {
-            _self = DotNetObjectReference.Create(this);
-            await JS.InvokeVoidAsync("pbsshSplitter.attach", _splitter, _self, MinSidebarWidth, MaxSidebarWidth, AppSettings.DefaultSidebarWidth);
-        }
+        if (Settings.Current.SidebarCollapsed || _splitterAttached)
+            return;
+        _self ??= DotNetObjectReference.Create(this);
+        _splitterAttached = true;
+        await JS.InvokeVoidAsync("pbsshSplitter.attach", _splitter, _self, MinSidebarWidth, MaxSidebarWidth, AppSettings.DefaultSidebarWidth);
+    }
+
+    private void SetSidebarCollapsed(bool collapsed)
+    {
+        Settings.Update(s => s with { SidebarCollapsed = collapsed });
+        _splitterAttached = false;
     }
 
     /// <summary>Called by the splitter when the user has finished resizing.</summary>

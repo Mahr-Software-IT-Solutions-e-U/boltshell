@@ -30,7 +30,8 @@ Secrets are decrypted locally, only when a connection is opened.
 - Host provisioning: turn a password-only host into a key-based Passbolt host (see below)
 - RDP in tabs (IronRDP web client, NLA/CredSSP) with credentials from Passbolt; create RDP hosts incl. pinned server certificate
 - Automatic updates from GitHub Releases: checked at start and every 6 hours, manual check and installed version on the accounts page
-- Frameless window with the app's own title bar (set `"NativeTitleBar": true` in settings.json for the OS title bar)
+- Frameless window with the app's own title bar; snapping on Windows (set `"NativeTitleBar": true` in settings.json for the OS title bar)
+- Host list can be resized and collapsed to a narrow rail
 - English and German UI (follows the OS language, switchable on the accounts page)
 
 ## Passbolt resource convention
