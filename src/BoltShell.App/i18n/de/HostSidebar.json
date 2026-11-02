@@ -27,5 +27,10 @@
   "Name": "Name",
   "Rename group": "Gruppe umbenennen",
   "Delete the group \"{0}\"? The hosts stay in Passbolt.": "Gruppe „{0}“ löschen? Die Hosts bleiben in Passbolt erhalten.",
-  "Delete": "Löschen"
+  "Delete": "Löschen",
+  "Not synced": "Nicht synchronisiert",
+  "{0}: {1}": "{0}: {1}",
+  "No groups yet – right-click a host to create one.": "Noch keine Gruppen – Rechtsklick auf einen Host, um eine anzulegen.",
+  "Without group": "Ohne Gruppe",
+  "All hosts are in groups.": "Alle Hosts sind in Gruppen."
 }

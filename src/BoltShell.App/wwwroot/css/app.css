@@ -457,6 +457,10 @@ textarea.input { height: auto; padding: 10px 12px; font-family: var(--mono); fon
 .card h2 { margin: 0; font-size: 16px; font-weight: 600; }
 .update-card { gap: 10px; }
 .update-card > .btn { align-self: flex-start; }
+.choice { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; line-height: 1.45; cursor: pointer; }
+.choice input { margin-top: 3px; accent-color: var(--accent); }
+.choice .muted { font-size: 12px; }
+.sync-warning { margin-left: auto; font-size: 11px; color: var(--err-text); cursor: help; }
 .card-top { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 14px; }
 .card-icon { width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex: none; }
 .stats { margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }

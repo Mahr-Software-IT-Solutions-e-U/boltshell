@@ -212,7 +212,7 @@ public sealed class PassboltClient : IDisposable
                 ["object_type"] = "PASSBOLT_SECRET_DATA",
                 ["resource_type_id"] = v5Type.Id,
                 ["password"] = resource.Password ?? "",
-                ["description"] = "",
+                ["description"] = resource.SecretNote ?? "",
                 ["custom_fields"] = new JsonArray(fields.Select(f => (JsonNode)new JsonObject
                 {
                     ["id"] = f.Id, ["type"] = f.Field.Type, ["secret_value"] = f.Field.Value,
@@ -238,7 +238,7 @@ public sealed class PassboltClient : IDisposable
             secretPlaintext = new JsonObject
             {
                 ["password"] = resource.Password ?? "",
-                ["description"] = privateKey ?? "",
+                ["description"] = resource.SecretNote ?? privateKey ?? "",
             }.ToJsonString();
             body = new JsonObject
             {
@@ -312,21 +312,7 @@ public sealed class PassboltClient : IDisposable
         else
             metadataRecipient = keys.PublicKeys;
 
-        // Everyone with access needs the new secret, encrypted to their own key.
-        var users = await SendAsync(HttpMethod.Get, $"users.json?filter[has-access]={escapedId}&contain[gpgkey]=1", null, authenticated: true, ct);
-        var secrets = new JsonArray();
-        var newSecret = secret.ToJsonString();
-        foreach (var user in users.AsArray())
-        {
-            var userId = user?["id"]?.GetValue<string>();
-            var armored = user?["gpgkey"]?["armored_key"]?.GetValue<string>();
-            if (userId is null || armored is null)
-                throw new PassboltApiException(Tr("User {0} has no public key.", userId));
-            var recipient = userId == _account.UserId ? keys.PublicKeys : PgpPublicKeys.Parse(armored);
-            secrets.Add(new JsonObject { ["user_id"] = userId, ["data"] = PgpMessage.EncryptAndSign(newSecret, recipient, keys) });
-        }
-        if (secrets.Count == 0)
-            throw new PassboltApiException(Tr("Could not determine who has access to the resource."));
+        var secrets = await EncryptForEveryoneWithAccessAsync(escapedId, secret.ToJsonString(), ct);
 
         var body = new JsonObject
         {
@@ -337,6 +323,61 @@ public sealed class PassboltClient : IDisposable
             ["secrets"] = secrets,
         };
         await SendAsync(HttpMethod.Put, $"resources/{escapedId}.json", body, authenticated: true, ct);
+    }
+
+    /// <summary>
+    /// Replaces the encrypted note (<c>description</c> of the secret) of a resource, for v5 and v4
+    /// "password and description" resources. Name, URIs and metadata stay unchanged.
+    /// </summary>
+    public async Task UpdateSecretNoteAsync(string resourceId, string note, CancellationToken ct = default)
+    {
+        var keys = RequireKeys();
+        var escapedId = Uri.EscapeDataString(resourceId);
+        var item = await SendAsync(HttpMethod.Get, $"resources/{escapedId}.json", null, authenticated: true, ct);
+        var secretBody = await SendAsync(HttpMethod.Get, $"secrets/resource/{escapedId}.json", null, authenticated: true, ct);
+        var secretPlaintext = PgpMessage.Decrypt(secretBody["data"]?.GetValue<string>() ?? throw new PassboltApiException(Tr("Secret has no data.")), keys);
+        if (JsonNode.Parse(secretPlaintext) is not JsonObject secret)
+            throw new PassboltApiException(Tr("The resource's secret has no note field."));
+        secret["description"] = note;
+
+        var body = new JsonObject
+        {
+            ["resource_type_id"] = item["resource_type_id"]?.DeepClone(),
+            ["secrets"] = await EncryptForEveryoneWithAccessAsync(escapedId, secret.ToJsonString(), ct),
+        };
+        if (item["metadata"] is JsonValue)
+        {
+            // v5: the encrypted metadata is sent back as it is.
+            body["metadata"] = item["metadata"]!.DeepClone();
+            body["metadata_key_id"] = item["metadata_key_id"]?.DeepClone();
+            body["metadata_key_type"] = item["metadata_key_type"]?.DeepClone();
+        }
+        else
+        {
+            foreach (var field in new[] { "name", "username", "uri", "description" })
+                body[field] = item[field]?.DeepClone();
+        }
+        await SendAsync(HttpMethod.Put, $"resources/{escapedId}.json", body, authenticated: true, ct);
+    }
+
+    // Everyone with access to a resource needs its secret, encrypted to their own key.
+    private async Task<JsonArray> EncryptForEveryoneWithAccessAsync(string escapedId, string plaintext, CancellationToken ct)
+    {
+        var keys = RequireKeys();
+        var users = await SendAsync(HttpMethod.Get, $"users.json?filter[has-access]={escapedId}&contain[gpgkey]=1", null, authenticated: true, ct);
+        var secrets = new JsonArray();
+        foreach (var user in users.AsArray())
+        {
+            var userId = user?["id"]?.GetValue<string>();
+            var armored = user?["gpgkey"]?["armored_key"]?.GetValue<string>();
+            if (userId is null || armored is null)
+                throw new PassboltApiException(Tr("User {0} has no public key.", userId));
+            var recipient = userId == _account.UserId ? keys.PublicKeys : PgpPublicKeys.Parse(armored);
+            secrets.Add(new JsonObject { ["user_id"] = userId, ["data"] = PgpMessage.EncryptAndSign(plaintext, recipient, keys) });
+        }
+        if (secrets.Count == 0)
+            throw new PassboltApiException(Tr("Could not determine who has access to the resource."));
+        return secrets;
     }
 
     /// <summary>Adds or replaces custom field <paramref name="key"/> in decrypted v5 metadata and secret objects.</summary>

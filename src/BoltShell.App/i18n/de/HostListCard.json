@@ -1,0 +1,8 @@
+{
+  "Host list": "Hostliste",
+  "Passbolt folders": "Passbolt-Ordner",
+  "Hosts in the folder structure of Passbolt – the same for everyone on the team.": "Hosts in der Ordnerstruktur von Passbolt – für alle im Team gleich.",
+  "Your own groups (right-click a host). Each account keeps them in a private, unshared Passbolt resource \"BoltShell (private settings)\", so they are the same on all your devices.": "Eigene Gruppen (Rechtsklick auf einen Host). Jedes Konto speichert sie in einer privaten, nicht geteilten Passbolt-Ressource „BoltShell (private settings)“ – so sind sie auf all deinen Geräten gleich.",
+  "Groups of {0} could not be synced: {1}": "Gruppen von {0} konnten nicht synchronisiert werden: {1}",
+  "My groups": "Meine Gruppen"
+}

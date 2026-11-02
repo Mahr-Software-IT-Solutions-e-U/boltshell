@@ -32,15 +32,34 @@ public sealed record AppSettings
 
     public HashSet<string> FavoriteResourceIds { get; init; } = [];
 
-    /// <summary>Personal host groups (only on this computer).</summary>
-    public List<HostGroup> HostGroups { get; init; } = [];
+    /// <summary>How the host list is organised: Passbolt folders or personal groups.</summary>
+    [System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter<HostListView>))]
+    public HostListView HostListView { get; init; } = HostListView.Folders;
+
+    /// <summary>Personal host groups per account id; a local copy of what is synced to each account's private Passbolt resource.</summary>
+    public Dictionary<string, HostGroupDocument> AccountHostGroups { get; init; } = [];
+
+    /// <summary>Host groups of version 0.3 (only local, all accounts mixed); migrated into <see cref="AccountHostGroups"/>.</summary>
+    public List<LegacyHostGroup> HostGroups { get; init; } = [];
 
     /// <summary>Collapsed folders and groups in the host list.</summary>
     public HashSet<string> CollapsedSidebarNodes { get; init; } = [];
 }
 
-/// <summary>A personal group of hosts. Members are <see cref="HostGroupStore.MemberKey"/> values.</summary>
-public sealed record HostGroup(string Id, string Name, List<string> Members);
+public enum HostListView { Folders, Groups }
+
+/// <summary>The personal host groups of one account. <see cref="Updated"/> decides which copy wins when syncing.</summary>
+public sealed record HostGroupDocument
+{
+    public DateTimeOffset Updated { get; init; }
+    public List<HostGroupEntry> Groups { get; init; } = [];
+}
+
+/// <param name="Members"><see cref="Accounts.HostEntry.Key"/> values of the account's hosts.</param>
+public sealed record HostGroupEntry(string Name, List<string> Members);
+
+/// <param name="Members">"accountId\nresourceId\nuri".</param>
+public sealed record LegacyHostGroup(string Id, string Name, List<string> Members);
 
 /// <summary>Stores <see cref="AppSettings"/> as JSON in the per-user config directory.</summary>
 public sealed class SettingsStore
