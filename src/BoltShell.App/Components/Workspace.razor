@@ -7,6 +7,7 @@
 @inject RdpProxy RdpProxy
 @inject IJSRuntime JS
 @inject UpdateService Updates
+@inject SettingsStore Settings
 
 <div class="ws">
     <header class="ws-header" data-drag>
@@ -39,7 +40,11 @@
     </header>
 
     <div class="ws-body">
-        <HostSidebar Filter="@_query" SelectedTab="@State.Active" OnOpen="OpenHostAsync" OnProvision="OnProvisionHost" OnCreateRdp="OnCreateRdpHost" />
+        <HostSidebar Filter="@_query" Width="@Settings.Current.SidebarWidth" SelectedTab="@State.Active" OnOpen="OpenHostAsync" OnProvision="OnProvisionHost" OnCreateRdp="OnCreateRdpHost" />
+        @* Drag to resize the host list; double-click resets it, arrow keys work when focused. *@
+        <div class="sidebar-splitter" role="separator" aria-orientation="vertical" tabindex="0" aria-label="@Tr("Resize host list")"
+             aria-valuenow="@Settings.Current.SidebarWidth" aria-valuemin="@MinSidebarWidth" aria-valuemax="@MaxSidebarWidth"
+             title="@Tr("Drag to resize, double-click to reset")" @ref="_splitter"></div>
 
         <main class="ws-main">
             <div class="tabbar" role="tablist" aria-label="@Tr("Sessions")">
@@ -353,8 +358,33 @@
 
     private void OnChanged() => InvokeAsync(StateHasChanged);
 
+    private const int MinSidebarWidth = 200;
+    private const int MaxSidebarWidth = 560;
+    private ElementReference _splitter;
+    private DotNetObjectReference<Workspace>? _self;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _self = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("pbsshSplitter.attach", _splitter, _self, MinSidebarWidth, MaxSidebarWidth, AppSettings.DefaultSidebarWidth);
+        }
+    }
+
+    /// <summary>Called by the splitter when the user has finished resizing.</summary>
+    [JSInvokable]
+    public void SaveSidebarWidth(int width)
+    {
+        var clamped = Math.Clamp(width, MinSidebarWidth, MaxSidebarWidth);
+        if (clamped != Settings.Current.SidebarWidth)
+            Settings.Update(s => s with { SidebarWidth = clamped });
+        StateHasChanged();
+    }
+
     public void Dispose()
     {
+        _self?.Dispose();
         State.Changed -= OnChanged;
         Accounts.Changed -= OnAccountsChanged;
         Updates.Changed -= OnChanged;

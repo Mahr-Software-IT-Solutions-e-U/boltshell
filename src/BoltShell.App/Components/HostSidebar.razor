@@ -5,7 +5,7 @@
 @inject IJSRuntime JS
 @inject HostGroupStore Groups
 
-<nav class="sidebar" aria-label="@Tr("Hosts by Passbolt account")">
+<nav class="sidebar" style="flex-basis:@(Width)px" aria-label="@Tr("Hosts by Passbolt account")">
     <div class="sidebar-head">
         <span class="overline">@Tr("Hosts")</span>
         @if (!string.IsNullOrWhiteSpace(Filter))
@@ -187,6 +187,7 @@
 
 @code {
     [Parameter] public string? Filter { get; set; }
+    [Parameter] public int Width { get; set; } = AppSettings.DefaultSidebarWidth;
     /// <summary>The active tab; its host is highlighted.</summary>
     [Parameter] public SessionTab? SelectedTab { get; set; }
     [Parameter] public EventCallback<(AccountSession Account, HostEntry Host)> OnOpen { get; set; }

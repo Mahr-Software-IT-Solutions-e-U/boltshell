@@ -42,6 +42,11 @@ public sealed record AppSettings
     /// <summary>Host groups of version 0.3 (only local, all accounts mixed); migrated into <see cref="AccountHostGroups"/>.</summary>
     public List<LegacyHostGroup> HostGroups { get; init; } = [];
 
+    /// <summary>Width of the host list in CSS pixels.</summary>
+    public int SidebarWidth { get; init; } = DefaultSidebarWidth;
+
+    public const int DefaultSidebarWidth = 280;
+
     /// <summary>Collapsed folders and groups in the host list.</summary>
     public HashSet<string> CollapsedSidebarNodes { get; init; } = [];
 }
