@@ -80,3 +80,14 @@ public sealed class PassboltApiException(string message, int? statusCode = null,
 {
     public int? StatusCode { get; } = statusCode;
 }
+
+/// <summary>Passbolt MFA provider names as listed in the login response (<c>mfa_providers</c>).</summary>
+public static class MfaProviders
+{
+    public const string Totp = "totp";
+    public const string Yubikey = "yubikey";
+    public const string Duo = "duo";
+
+    /// <summary>Providers BoltShell can complete, in order of preference.</summary>
+    public static readonly IReadOnlyList<string> Supported = [Totp, Yubikey];
+}

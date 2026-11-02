@@ -101,11 +101,16 @@ public sealed class PassboltClient : IDisposable
         return new LoginResult(mfa);
     }
 
-    /// <summary>Completes a login that requires TOTP based multi-factor authentication.</summary>
-    public async Task VerifyTotpAsync(string code, CancellationToken ct = default)
+    /// <summary>Completes a login that requires multi-factor authentication with a code (TOTP or YubiKey OTP).</summary>
+    public async Task VerifyMfaAsync(string provider, string code, CancellationToken ct = default)
     {
-        await SendAsync(HttpMethod.Post, "mfa/verify/totp.json",
-            new JsonObject { ["totp"] = code, ["remember"] = false }, authenticated: true, ct);
+        var (path, field) = provider switch
+        {
+            MfaProviders.Totp => ("mfa/verify/totp.json", "totp"),
+            MfaProviders.Yubikey => ("mfa/verify/yubikey.json", "hotp"),
+            _ => throw new NotSupportedException(Tr("The MFA method \"{0}\" is not supported by BoltShell yet.", provider)),
+        };
+        await SendAsync(HttpMethod.Post, path, new JsonObject { [field] = code, ["remember"] = false }, authenticated: true, ct);
         await LoadResourceTypesAsync(ct);
     }
 
