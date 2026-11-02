@@ -1,0 +1,45 @@
+@inject HostGroupStore Groups
+
+@* A Passbolt folder in the sidebar with its subfolders and hosts; the root node has no header. *@
+@if (Node.Id is { } id)
+{
+    var collapsed = IsCollapsed;
+    <button type="button" class="tree-row" style="padding-left:@(8 + Depth * 16)px" aria-expanded="@(collapsed ? "false" : "true")"
+            title="@Account.FolderPath(id)" @onclick="() => Groups.ToggleCollapsed(HostGroupStore.FolderNode(Account.Id, id))">
+        <span class="chevron @(collapsed ? "" : "open")"><Icon Name="chevron" Size="12" StrokeWidth="2.4" /></span>
+        <Icon Name="folder" Size="14" Color="#9AA1AC" />
+        <span class="tree-name">@Node.Name</span>
+        <span class="tree-count">@Node.Count</span>
+    </button>
+}
+@if (!IsCollapsed)
+{
+    var depth = Node.Id is null ? Depth : Depth + 1;
+    @foreach (var folder in Node.Folders)
+    {
+        <HostFolder @key="folder.Id" Account="Account" Node="folder" Depth="depth" Filtering="Filtering"
+                    IsSelected="IsSelected" OnOpen="OnOpen" OnContextMenu="OnContextMenu" />
+    }
+    @foreach (var host in Node.Hosts)
+    {
+        <HostRow @key="host.Key" Account="Account" Host="host" Indent="depth" Selected="@IsSelected(Account, host)"
+                 OnOpen="() => OnOpen.InvokeAsync((Account, host))"
+                 OnContextMenu="e => OnContextMenu.InvokeAsync((Account, host, e))" />
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public AccountSession Account { get; set; } = null!;
+    [Parameter, EditorRequired] public HostFolderNode Node { get; set; } = null!;
+    [Parameter] public int Depth { get; set; }
+
+    /// <summary>While searching, every folder is shown open.</summary>
+    [Parameter] public bool Filtering { get; set; }
+
+    [Parameter, EditorRequired] public Func<AccountSession, HostEntry, bool> IsSelected { get; set; } = null!;
+    [Parameter] public EventCallback<(AccountSession Account, HostEntry Host)> OnOpen { get; set; }
+    [Parameter] public EventCallback<(AccountSession Account, HostEntry Host, MouseEventArgs Event)> OnContextMenu { get; set; }
+
+    private bool IsCollapsed =>
+        Node.Id is { } id && !Filtering && Groups.IsCollapsed(HostGroupStore.FolderNode(Account.Id, id));
+}

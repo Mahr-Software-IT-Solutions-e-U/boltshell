@@ -217,6 +217,20 @@ textarea.input { height: auto; padding: 10px 12px; font-family: var(--mono); fon
 .host-row.locked { opacity: .7; }
 .host-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .host-addr { font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Folder and group rows in the host list */
+.tree-row {
+    display: flex; align-items: center; gap: 6px; width: 100%; min-height: 30px; padding: 4px 8px; border: 0; border-radius: 7px;
+    background: transparent; color: var(--text-2); font: inherit; font-size: 12.5px; font-weight: 600; text-align: left; cursor: pointer;
+}
+.tree-row:hover { background: #1A1E25; color: var(--text); }
+.chevron { display: inline-flex; color: var(--muted); transition: transform .12s ease; }
+.chevron.open { transform: rotate(90deg); }
+.tree-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tree-count { font-size: 11px; font-weight: 500; color: var(--muted); }
+.menu-label { padding: 6px 10px 4px; font-size: 12px; font-weight: 600; color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.menu-check { width: 15px; flex: none; text-align: center; color: var(--accent); }
+
 .sidebar-hint {
     margin-top: auto;
     padding: 10px;

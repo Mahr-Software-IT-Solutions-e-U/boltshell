@@ -190,6 +190,14 @@ window.pbsshMenu = {
     anchor(element) {
         const r = element.getBoundingClientRect();
         return [r.right, r.bottom];
+    },
+
+    // Moves a fixed-position menu (opened at the mouse) back inside the window.
+    keepInside(element) {
+        if (!element) return;
+        const r = element.getBoundingClientRect();
+        if (r.right > window.innerWidth - 8) element.style.left = Math.max(8, window.innerWidth - r.width - 8) + "px";
+        if (r.bottom > window.innerHeight - 8) element.style.top = Math.max(8, window.innerHeight - r.height - 8) + "px";
     }
 };
 
