@@ -93,7 +93,10 @@ public sealed class PassboltClient : IDisposable
         if (_accessToken is null)
             throw new PassboltApiException(Tr("Server did not return an access token."));
 
-        var mfa = login["mfa_providers"]?.AsArray().Select(n => n!.GetValue<string>()).ToList() ?? [];
+        // Passbolt puts the MFA methods still required into the encrypted challenge ("providers", last used first;
+        // absent if MFA is not needed). The verification sets the passbolt_mfa cookie, kept by the handler's CookieContainer.
+        var mfa = (response["providers"] as JsonArray ?? login["mfa_providers"] as JsonArray)?
+            .Select(n => n?.GetValue<string>()).OfType<string>().ToList() ?? [];
         _logger.LogInformation("Logged in to {Server} (MFA providers: {Mfa})", _account.BaseUrl, string.Join(",", mfa));
 
         if (mfa.Count == 0)

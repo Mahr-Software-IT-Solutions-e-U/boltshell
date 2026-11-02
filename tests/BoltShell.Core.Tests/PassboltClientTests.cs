@@ -401,10 +401,10 @@ public class PassboltClientTests
                 ["access_token"] = _accessToken,
                 ["refresh_token"] = "refresh-1",
             };
-            var body = new JsonObject { ["challenge"] = EncryptFor(_userPublic, response.ToJsonString()) };
+            // Like Passbolt's MfaJwtArmoredChallengeService: the providers are part of the encrypted challenge.
             if (Mfa.Length > 0)
-                body["mfa_providers"] = new JsonArray(Mfa.Select(m => (JsonNode)JsonValue.Create(m)!).ToArray());
-            return Ok(body);
+                response["providers"] = new JsonArray(Mfa.Select(m => (JsonNode)JsonValue.Create(m)!).ToArray());
+            return Ok(new JsonObject { ["challenge"] = EncryptFor(_userPublic, response.ToJsonString()) });
         }
 
         private string EncryptFor(PgpPublicKeys recipient, string plaintext) => PgpMessage.EncryptAndSign(plaintext, recipient, _serverKeys);
