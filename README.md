@@ -145,6 +145,9 @@ scripts/publish.sh            # or .\scripts\publish.ps1 on Windows; optional ve
 | `dist/releases/BoltShell-win-Portable.zip` | Portable version |
 | `dist/releases/*.nupkg`, `releases.win.json` | Update packages; keep this folder so new builds get delta updates |
 
+Release builds for macOS are signed and notarized in CI once the Apple secrets are configured, see
+[docs/CODE_SIGNING.md](docs/CODE_SIGNING.md).
+
 The version comes from `<Version>` in `src/BoltShell.App/BoltShell.App.csproj`; raise it before publishing a new build.
 
 | Project | Content |
