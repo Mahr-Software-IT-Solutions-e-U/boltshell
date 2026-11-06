@@ -33,8 +33,12 @@ public sealed class UpdateService(ILogger<UpdateService> logger)
         ?? typeof(UpdateService).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0]
         ?? "?";
 
-    /// <summary>False for development runs and portable builds; those are updated by downloading a new version.</summary>
-    public bool IsSupported => Manager is { IsInstalled: true, IsPortable: false };
+    /// <summary>False for development runs and Windows portable builds; those are updated by downloading a new version.</summary>
+    public bool IsSupported => Manager is { } m && IsUpdatable(m.IsInstalled, m.IsPortable, OperatingSystem.IsWindows());
+
+    // Velopack reports every macOS .app and Linux AppImage as portable (they update in place);
+    // only on Windows does "portable" mean the zip build without an installation.
+    internal static bool IsUpdatable(bool installed, bool portable, bool windows) => installed && !(windows && portable);
 
     public event Action? Changed;
 
