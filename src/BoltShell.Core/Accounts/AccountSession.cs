@@ -28,6 +28,9 @@ public sealed class AccountSession : IDisposable
     public string Id => Config.Id;
     public bool IsUnlocked => _client?.IsAuthenticated == true && !MfaPending;
     public bool MfaPending { get; private set; }
+
+    /// <summary>MFA methods the server offers for the pending login (e.g. <c>totp</c>, <c>yubikey</c>, <c>duo</c>).</summary>
+    public IReadOnlyList<string> PendingMfaProviders { get; private set; } = [];
     public DateTimeOffset LastActivity { get; private set; }
 
     public IReadOnlyList<PassboltResource> Resources { get; private set; } = [];
@@ -64,6 +67,7 @@ public sealed class AccountSession : IDisposable
         }
 
         MfaPending = result.MfaRequired;
+        PendingMfaProviders = result.MfaProviders;
         Touch();
         if (!MfaPending)
             await RefreshAsync(ct);
@@ -71,10 +75,12 @@ public sealed class AccountSession : IDisposable
         return result;
     }
 
-    public async Task VerifyTotpAsync(string code, CancellationToken ct = default)
+    /// <summary>Completes the pending login with a code for <paramref name="provider"/> (see <see cref="MfaProviders"/>).</summary>
+    public async Task VerifyMfaAsync(string provider, string code, CancellationToken ct = default)
     {
-        await RequireClient().VerifyTotpAsync(code, ct);
+        await RequireClient().VerifyMfaAsync(provider, code, ct);
         MfaPending = false;
+        PendingMfaProviders = [];
         await RefreshAsync(ct);
         Changed?.Invoke();
     }
@@ -185,6 +191,7 @@ public sealed class AccountSession : IDisposable
             _client = null;
         }
         MfaPending = false;
+        PendingMfaProviders = [];
         Changed?.Invoke();
     }
 

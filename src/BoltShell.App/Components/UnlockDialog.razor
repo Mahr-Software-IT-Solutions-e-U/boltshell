@@ -2,11 +2,38 @@
     <DialogContent>
         <form @onsubmit="SubmitAsync" @onsubmit:preventDefault style="display:flex; flex-direction:column; gap:14px; padding-top:4px">
             <span class="acc-url">@Account.Config.Account.BaseUrl</span>
-            @if (Account.MfaPending)
+            @if (Account.MfaPending && Supported.Count == 0)
             {
-                <label class="field">@Tr("One-time code (TOTP)")
-                    <input class="input mono" @bind="_totp" @bind:event="oninput" inputmode="numeric" autocomplete="one-time-code" maxlength="6" autofocus disabled="@_busy" />
-                </label>
+                <p style="margin:0; font-size:13px; line-height:1.5">
+                    @Tr("Your Passbolt account requires {0} as second factor, which BoltShell does not support yet. Set up TOTP (authenticator app) or a YubiKey in Passbolt under Profile › Multi-factor authentication.", string.Join(", ", Account.PendingMfaProviders.Select(ProviderName)))
+                </p>
+            }
+            else if (Account.MfaPending)
+            {
+                @if (Supported.Count > 1)
+                {
+                    <div class="mfa-choice" role="radiogroup" aria-label="@Tr("Second factor")">
+                        @foreach (var provider in Supported)
+                        {
+                            <button type="button" role="radio" aria-checked="@(provider == Provider ? "true" : "false")"
+                                    class="btn btn-sm @(provider == Provider ? "btn-primary" : "")" @onclick="() => { _provider = provider; _code = null; }">
+                                @ProviderName(provider)
+                            </button>
+                        }
+                    </div>
+                }
+                @if (Provider == MfaProviders.Yubikey)
+                {
+                    <label class="field">@Tr("YubiKey: insert it and touch the button")
+                        <input class="input mono" type="password" @bind="_code" @bind:event="oninput" autocomplete="off" maxlength="64" autofocus disabled="@_busy" />
+                    </label>
+                }
+                else
+                {
+                    <label class="field">@Tr("One-time code (TOTP)")
+                        <input class="input mono" @bind="_code" @bind:event="oninput" inputmode="numeric" autocomplete="one-time-code" maxlength="6" autofocus disabled="@_busy" />
+                    </label>
+                }
             }
             else
             {
@@ -20,7 +47,7 @@
             }
             <div style="display:flex; justify-content:flex-end; gap:8px">
                 <button type="button" class="btn" @onclick="() => MudDialog.Cancel()" disabled="@_busy">@Tr("Cancel")</button>
-                <button type="submit" class="btn btn-primary" disabled="@_busy">
+                <button type="submit" class="btn btn-primary" disabled="@(_busy || Account.MfaPending && Supported.Count == 0)">
                     @(_busy ? Tr("Please wait…") : Account.MfaPending ? Tr("Confirm") : Tr("Unlock"))
                 </button>
             </div>
@@ -33,7 +60,21 @@
     [Parameter, EditorRequired] public AccountSession Account { get; set; } = null!;
 
     private string? _passphrase;
-    private string? _totp;
+    private string? _code;
+    private string? _provider;
+
+    // MFA methods offered by the server that BoltShell can complete, in BoltShell's order of preference.
+    private List<string> Supported => MfaProviders.Supported.Where(Account.PendingMfaProviders.Contains).ToList();
+
+    private string Provider => _provider ?? Supported.FirstOrDefault() ?? MfaProviders.Totp;
+
+    private static string ProviderName(string provider) => provider switch
+    {
+        MfaProviders.Totp => Tr("Authenticator app (TOTP)"),
+        MfaProviders.Yubikey => "YubiKey",
+        MfaProviders.Duo => "Duo",
+        _ => provider,
+    };
     private string? _error;
     private bool _busy;
 
@@ -45,8 +86,9 @@
         _error = null;
         try
         {
-            _error = await UnlockAsync(Account, _passphrase, _totp);
+            _error = await UnlockAsync(Account, _passphrase, Provider, _code);
             _passphrase = null;
+            _code = null;
             if (Account.IsUnlocked)
                 MudDialog.Close(DialogResult.Ok(true));
         }
@@ -56,13 +98,13 @@
         }
     }
 
-    /// <summary>Runs the unlock or TOTP step; returns a user-facing error message, or null.</summary>
-    public static async Task<string?> UnlockAsync(AccountSession account, string? passphrase, string? totp)
+    /// <summary>Runs the unlock or MFA step; returns a user-facing error message, or null.</summary>
+    public static async Task<string?> UnlockAsync(AccountSession account, string? passphrase, string provider, string? code)
     {
         try
         {
             if (account.MfaPending)
-                await account.VerifyTotpAsync(totp?.Trim() ?? "");
+                await account.VerifyMfaAsync(provider, code?.Trim() ?? "");
             else
                 await account.UnlockAsync(passphrase ?? "");
             return null;
@@ -81,7 +123,7 @@
         }
     }
 
-    /// <summary>Asks for the passphrase (and TOTP if required). Returns true once the account is unlocked.</summary>
+    /// <summary>Asks for the passphrase (and the second factor if required). Returns true once the account is unlocked.</summary>
     public static async Task<bool> ShowAsync(IDialogService dialogs, AccountSession account)
     {
         if (account.IsUnlocked)

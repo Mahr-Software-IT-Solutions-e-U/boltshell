@@ -77,6 +77,25 @@ public sealed class AccountManagerTests : IDisposable
         Assert.False(account.IsUnlocked);
     }
 
+    [Fact]
+    public async Task Unlock_WithMfa_StaysLockedUntilTheSecondFactorIsVerified()
+    {
+        using var manager = new AccountManager(new SettingsStore(_dir), Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance,
+            () => new PassboltClientTests.FakePassboltServer { Mfa = ["yubikey", "duo"] });
+        var account = manager.Add("Intern", PassboltClientTests.Account());
+
+        await account.UnlockAsync(TestKeys.UserPassphrase);
+        Assert.True(account.MfaPending);
+        Assert.False(account.IsUnlocked);
+        Assert.Equal(["yubikey", "duo"], account.PendingMfaProviders);
+        Assert.Empty(account.Resources); // nothing loaded before the second factor
+
+        await account.VerifyMfaAsync(Passbolt.MfaProviders.Yubikey, "cccccbcvftjghtjvukktjdhhnhfbcbtgbvlbrnbnlhgv");
+        Assert.True(account.IsUnlocked);
+        Assert.Empty(account.PendingMfaProviders);
+        Assert.NotEmpty(account.Resources);
+    }
+
     private AccountManager Create() =>
         new(new SettingsStore(_dir), NullLoggerFactory.Instance, () => new PassboltClientTests.FakePassboltServer());
 

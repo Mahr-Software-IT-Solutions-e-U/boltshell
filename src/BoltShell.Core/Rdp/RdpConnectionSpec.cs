@@ -94,7 +94,8 @@ public static class RdpConnectionMapper
                        ?? throw new InvalidOperationException(Tr("Resource '{0}' has no username.", resource.Name));
         var domain = target.Domain ?? FieldValue(DomainField)?.Trim() ?? fieldDomain;
 
-        var fingerprints = ParseFingerprints(FieldValue(CertificateField), shared ? target : null);
+        var primary = uri == resource.Uris.FirstOrDefault(u => RdpTarget.TryParse(u, out _));
+        var fingerprints = ParseFingerprints(FieldValue(CertificateField), shared ? target : null, primary);
 
         return new RdpConnectionSpec(Accounts.HostEntry.Name(resource.Name, uri, target.Host, shared), target, username, domain, secret.Password, fingerprints);
     }
@@ -102,9 +103,10 @@ public static class RdpConnectionMapper
     /// <summary>
     /// Parses <c>rdp_cert_sha256</c>: fingerprints separated by lines, commas or spaces, or lines <c>host fingerprint</c>
     /// for resources with several hosts. Selection by <paramref name="target"/> works like
-    /// <see cref="SshConnectionMapper.ParseHostKeys"/>: matching hosts, else unqualified entries, else all.
+    /// <see cref="SshConnectionMapper.ParseHostKeys"/>: entries for that host; entries without a host only for the
+    /// first <c>rdp://</c> host (<paramref name="primaryHost"/>).
     /// </summary>
-    public static IReadOnlyList<string> ParseFingerprints(string? text, RdpTarget? target = null)
+    public static IReadOnlyList<string> ParseFingerprints(string? text, RdpTarget? target = null, bool primaryHost = true)
     {
         var entries = new List<(string? Patterns, string Fingerprint)>();
         foreach (var line in (text ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
@@ -120,9 +122,9 @@ public static class RdpConnectionMapper
         if (target is null)
             return entries.Select(e => e.Fingerprint).ToList();
         var forTarget = entries.Where(e => e.Patterns is not null && HostPatterns.Matches(e.Patterns, target.Host, target.Port, 3389)).ToList();
-        if (forTarget.Count == 0)
+        if (forTarget.Count == 0 && primaryHost)
             forTarget = entries.Where(e => e.Patterns is null).ToList();
-        return (forTarget.Count > 0 ? forTarget : entries).Select(e => e.Fingerprint).ToList();
+        return forTarget.Select(e => e.Fingerprint).ToList();
     }
 
     /// <summary>

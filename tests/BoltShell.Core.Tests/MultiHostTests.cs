@@ -76,11 +76,34 @@ public class MultiHostTests
 
         Assert.Equal([Fp(KeyA)], SshConnectionMapper.Map(resource, Secret(field), "ssh://a.example.com").HostKeys!.Select(k => k.FingerprintSha256));
         Assert.Equal([Fp(KeyB)], SshConnectionMapper.Map(resource, Secret(field), "ssh://b.example.com:2222").HostKeys!.Select(k => k.FingerprintSha256));
-        // No entry for c and no unqualified entry: all entries count, so the pin is never silently dropped.
-        Assert.Equal(2, SshConnectionMapper.Map(resource, Secret(field), "ssh://c.example.com").HostKeys!.Count);
-        // An unqualified entry applies to hosts without their own entry.
-        var withDefault = field + "\n" + KeyB;
-        Assert.Equal([Fp(KeyB)], SshConnectionMapper.Map(resource, Secret(withDefault), "ssh://c.example.com").HostKeys!.Select(k => k.FingerprintSha256));
+        // No entry for c: not pinned (the session offers to store its key), never another host's key.
+        Assert.False(SshConnectionMapper.Map(resource, Secret(field), "ssh://c.example.com").HasPinnedHostKeys);
+    }
+
+    [Fact]
+    public void KeyWithoutHost_BelongsToTheFirstHostOnly()
+    {
+        // Provisioned with one URI (key stored without host), a second URI added later in Passbolt.
+        var resource = Resource("ssh://a.example.com", "ssh://b.example.com");
+
+        var first = SshConnectionMapper.Map(resource, Secret(KeyA), "ssh://a.example.com");
+        var second = SshConnectionMapper.Map(resource, Secret(KeyA), "ssh://b.example.com");
+
+        Assert.Equal([Fp(KeyA)], first.HostKeys!.Select(k => k.FingerprintSha256));
+        Assert.False(second.HasPinnedHostKeys); // "not stored" instead of a false mismatch alarm
+
+        // After storing b's key from the session, both hosts are pinned to their own key.
+        var updated = SshConnectionMapper.WithHostKey(KeyA, second.Target, KeyB, sharedResource: true);
+        Assert.Equal([Fp(KeyA)], SshConnectionMapper.Map(resource, Secret(updated), "ssh://a.example.com").HostKeys!.Select(k => k.FingerprintSha256));
+        Assert.Equal([Fp(KeyB)], SshConnectionMapper.Map(resource, Secret(updated), "ssh://b.example.com").HostKeys!.Select(k => k.FingerprintSha256));
+    }
+
+    [Fact]
+    public void RdpCertificateWithoutHost_BelongsToTheFirstRdpHostOnly()
+    {
+        var fp = Convert.ToBase64String(SHA256.HashData("a"u8)).TrimEnd('=');
+        Assert.Equal([fp], RdpConnectionMapper.ParseFingerprints(fp, new RdpTarget("win-a"), primaryHost: true));
+        Assert.Empty(RdpConnectionMapper.ParseFingerprints(fp, new RdpTarget("win-b"), primaryHost: false));
     }
 
     [Fact]

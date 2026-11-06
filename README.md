@@ -23,14 +23,15 @@ Secrets are decrypted locally, only when a connection is opened.
   "BoltShell (private settings)" in each account (URI `boltshell://private-settings`, JSON in the encrypted note);
   each account only stores its own hosts, groups with the same name are merged for display
 - Quick connect (Ctrl+K): search hosts or connect directly to `user@host:port`
-- Passbolt login via JWT + OpenPGP, Passbolt v4 and v5 (encrypted metadata, shared metadata keys, custom fields), TOTP
+- Passbolt login via JWT + OpenPGP, Passbolt v4 and v5 (encrypted metadata, shared metadata keys, custom fields); MFA with TOTP or YubiKey (Duo and SSO not yet)
 - Password, keyboard-interactive and private-key authentication (incl. encrypted keys); servers that also ask for a one-time code get it from the Passbolt TOTP of the resource, otherwise the user is asked
 - Host identity from Passbolt (`ssh_host_key`, `rdp_cert_sha256`), otherwise trust-on-first-use with a warning on changed keys; sessions without a stored identity show a notice with a button to store it in Passbolt, a mismatch with Passbolt is refused and shown prominently (expected vs. presented fingerprint, replace only after explicit confirmation)
 - SFTP upload/download (files, folders, drag & drop) with progress and cancel; symlinked folders can be opened; SCP fallback for servers without SFTP
 - Host provisioning: turn a password-only host into a key-based Passbolt host (see below)
 - RDP in tabs (IronRDP web client, NLA/CredSSP) with credentials from Passbolt; create RDP hosts incl. pinned server certificate
 - Automatic updates from GitHub Releases: checked at start and every 6 hours, manual check and installed version on the accounts page
-- Frameless window with the app's own title bar (set `"NativeTitleBar": true` in settings.json for the OS title bar)
+- Frameless window with the app's own title bar; snapping on Windows (set `"NativeTitleBar": true` in settings.json for the OS title bar)
+- Host list can be resized and collapsed to a narrow rail
 - English and German UI (follows the OS language, switchable on the accounts page)
 
 ## Passbolt resource convention
@@ -61,8 +62,9 @@ A key passphrase is never sent to the server as a login password.
 its own host in the sidebar, with the resource's credentials – e.g. a cluster sharing a key, or a Windows server
 reachable via RDP and SSH. The host identity fields then hold one entry per host, as known_hosts lines
 (`host ssh-ed25519 AAAA…`, `[host]:2222 …`, wildcards and hashed entries work) or `host fingerprint` for
-`rdp_cert_sha256`. Entries without a host apply to hosts without their own entry. "Store in Passbolt" adds or
-replaces only the entry of the connected host.
+`rdp_cert_sha256`. An entry without a host (e.g. from provisioning, before more URIs were added) belongs to the
+first host only; other hosts without an entry of their own are treated as not stored, and the session offers
+"Store in Passbolt", which adds or replaces only the entry of the connected host.
 Hosts are named "resource (host)"; give a host its own name with a URI fragment, e.g. `ssh://10.0.0.11#node-1`
 → "cluster · node-1" (BoltShell ignores the fragment when connecting).
 
