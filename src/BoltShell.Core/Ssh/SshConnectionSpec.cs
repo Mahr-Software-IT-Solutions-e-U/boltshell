@@ -77,7 +77,8 @@ public static partial class SshConnectionMapper
                 .Select(f => NullIfEmpty(secret.CustomFieldValues.GetValueOrDefault(f.Id)) ?? NullIfEmpty(f.MetadataValue))
                 .FirstOrDefault(v => v is not null);
 
-        var hostKeys = ParseHostKeys(FieldValue(HostKeyField), shared ? target : null);
+        var primary = uri == resource.Uris.FirstOrDefault(u => SshTarget.TryParse(u, out _));
+        var hostKeys = ParseHostKeys(FieldValue(HostKeyField), shared ? target : null, primary);
         var publicKey = FieldValue(PublicKeyField)?.Trim();
         var password = NullIfEmpty(secret.Password);
         var passphraseField = FieldValue(PassphraseField);
@@ -105,10 +106,12 @@ public static partial class SshConnectionMapper
     /// (also <c>host SHA256:…</c>).
     /// </summary>
     /// <param name="target">
-    /// For resources with several hosts: only entries whose host pattern matches the target count, else the entries
-    /// without host pattern. If neither exists, all entries count, so a pin never silently disappears.
+    /// For resources with several hosts: the entries whose host pattern matches the target. Entries without a host
+    /// (e.g. from provisioning, before more URIs were added) belong to the first host only; other hosts without an
+    /// entry of their own are not pinned, so the session offers to store their key instead of reporting a mismatch.
     /// </param>
-    public static IReadOnlyList<ExpectedHostKey> ParseHostKeys(string? text, SshTarget? target = null)
+    /// <param name="primaryHost">True if <paramref name="target"/> is the resource's first <c>ssh://</c> host.</param>
+    public static IReadOnlyList<ExpectedHostKey> ParseHostKeys(string? text, SshTarget? target = null, bool primaryHost = true)
     {
         var entries = new List<(string? Patterns, ExpectedHostKey Key)>();
         if (string.IsNullOrWhiteSpace(text))
@@ -148,9 +151,9 @@ public static partial class SshConnectionMapper
         if (target is null)
             return entries.Select(e => e.Key).ToList();
         var forTarget = entries.Where(e => e.Patterns is not null && HostPatterns.Matches(e.Patterns, target.Host, target.Port, 22)).ToList();
-        if (forTarget.Count == 0)
+        if (forTarget.Count == 0 && primaryHost)
             forTarget = entries.Where(e => e.Patterns is null).ToList();
-        return (forTarget.Count > 0 ? forTarget : entries).Select(e => e.Key).ToList();
+        return forTarget.Select(e => e.Key).ToList();
     }
 
     /// <summary>

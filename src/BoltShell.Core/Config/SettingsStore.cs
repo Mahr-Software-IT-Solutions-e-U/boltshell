@@ -47,6 +47,9 @@ public sealed record AppSettings
 
     public const int DefaultSidebarWidth = 280;
 
+    /// <summary>The host list is collapsed to a narrow rail.</summary>
+    public bool SidebarCollapsed { get; init; }
+
     /// <summary>Collapsed folders and groups in the host list.</summary>
     public HashSet<string> CollapsedSidebarNodes { get; init; } = [];
 }

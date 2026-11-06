@@ -12,7 +12,11 @@
         {
             <span class="muted" style="font-size:11px; margin-left:auto; margin-right:6px">@Tr("Filter: {0}", Filter)</span>
         }
-        <div style="position:relative">
+        <div style="position:relative; display:flex; gap:2px">
+            <button type="button" class="btn btn-icon btn-sm btn-ghost" aria-label="@Tr("Hide host list")" title="@Tr("Hide host list")"
+                    @onclick="OnCollapse">
+                <Icon Name="back" Size="15" />
+            </button>
             <button type="button" class="btn btn-icon btn-sm btn-ghost" aria-label="@Tr("Add host")" title="@Tr("Add host")" @ref="_menuButton"
                     aria-haspopup="menu" aria-expanded="@(_menuOpen ? "true" : "false")" @onclick="ToggleMenuAsync">
                 <Icon Name="plus" />
@@ -188,6 +192,7 @@
 @code {
     [Parameter] public string? Filter { get; set; }
     [Parameter] public int Width { get; set; } = AppSettings.DefaultSidebarWidth;
+    [Parameter] public EventCallback OnCollapse { get; set; }
     /// <summary>The active tab; its host is highlighted.</summary>
     [Parameter] public SessionTab? SelectedTab { get; set; }
     [Parameter] public EventCallback<(AccountSession Account, HostEntry Host)> OnOpen { get; set; }

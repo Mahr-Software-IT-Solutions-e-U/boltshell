@@ -190,6 +190,10 @@ textarea.input { height: auto; padding: 10px 12px; font-family: var(--mono); fon
     gap: 18px;
     overflow-y: auto;
 }
+.sidebar-rail {
+    flex: 0 0 48px; display: flex; flex-direction: column; align-items: center; padding: 12px 0;
+    background: var(--panel); border-right: 1px solid var(--line);
+}
 .sidebar-splitter {
     flex: 0 0 6px; margin: 0 -3px; position: relative; z-index: 5; cursor: col-resize; touch-action: none;
 }
@@ -488,7 +492,7 @@ textarea.input { height: auto; padding: 10px 12px; font-family: var(--mono); fon
 .linklike { border: 0; background: none; padding: 0; color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; text-align: left; }
 
 @media (max-width: 760px) {
-    .sidebar, .sidebar-splitter { display: none; }
+    .sidebar, .sidebar-splitter, .sidebar-rail { display: none; }
     .stats { grid-template-columns: 1fr; }
     .sftp { max-width: none; }
 }
