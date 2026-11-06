@@ -42,6 +42,8 @@ jobs:
     env:
       # macOS signing + notarization run only when the Apple secrets are configured (and not for pull requests).
       MACOS_SIGN: ${{ startsWith(matrix.os, 'macos') && github.event_name != 'pull_request' && secrets.MACOS_CERTIFICATES_P12 != '' }}
+      # Windows signing (Azure Artifact Signing) only for release tags: every signed file counts against the quota.
+      WINDOWS_SIGN: ${{ startsWith(matrix.os, 'windows') && startsWith(github.ref, 'refs/tags/v') && secrets.AZURE_CLIENT_SECRET != '' }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-dotnet@v5
@@ -129,14 +131,40 @@ jobs:
             echo "MACOS_INSTALLER_IDENTITY=$installer_identity"
           } >> "$GITHUB_ENV"
 
+      # Azure Artifact Signing: account and certificate profile come from repository variables; the app registration
+      # that may sign (role "Artifact Signing Certificate Profile Signer") authenticates via AZURE_* secrets.
+      - name: Prepare Windows signing
+        if: env.WINDOWS_SIGN == 'true'
+        shell: bash
+        env:
+          ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+        run: |
+          if [ -z "$ENDPOINT" ] || [ -z "$ACCOUNT" ] || [ -z "$PROFILE" ]; then
+            echo "::error::Set the repository variables AZURE_SIGNING_ENDPOINT, AZURE_SIGNING_ACCOUNT and AZURE_SIGNING_PROFILE."
+            exit 1
+          fi
+          file="$RUNNER_TEMP/artifact-signing.json"
+          printf '{ "Endpoint": "%s", "CodeSigningAccountName": "%s", "CertificateProfileName": "%s" }\n' \
+            "$ENDPOINT" "$ACCOUNT" "$PROFILE" > "$file"
+          echo "WINDOWS_SIGN_FILE=$file" >> "$GITHUB_ENV"
+
       # Release notes travel inside the package; vpk upload uses them as the GitHub release text.
       - name: Package
         shell: bash
+        env:
+          AZURE_TENANT_ID: ${{ env.WINDOWS_SIGN == 'true' && secrets.AZURE_TENANT_ID || '' }}
+          AZURE_CLIENT_ID: ${{ env.WINDOWS_SIGN == 'true' && secrets.AZURE_CLIENT_ID || '' }}
+          AZURE_CLIENT_SECRET: ${{ env.WINDOWS_SIGN == 'true' && secrets.AZURE_CLIENT_SECRET || '' }}
         run: |
           version="${{ steps.version.outputs.version }}"
           printf '%s\n' "Source code for this release: tag v$version (archives below)." \
             "License texts are included in every package (LICENSE, THIRD_PARTY_NOTICES.md, licenses/)." > release-notes.md
           sign=()
+          if [ "$WINDOWS_SIGN" = "true" ]; then
+            sign=(--azureTrustedSignFile "$WINDOWS_SIGN_FILE")
+          fi
           if [ "$MACOS_SIGN" = "true" ]; then
             sign=(--signAppIdentity "$MACOS_APP_IDENTITY" --signInstallIdentity "$MACOS_INSTALLER_IDENTITY"
                   --signEntitlements build/macos/entitlements.plist --notaryProfile boltshell --keychain "$MACOS_KEYCHAIN")
@@ -145,6 +173,20 @@ jobs:
             --runtime ${{ matrix.rid }} --packDir publish --mainExe ${{ matrix.exe }} --packTitle "BoltShell" --packAuthors "BoltShell contributors" \
             --icon src/BoltShell.App/Assets/icon/${{ matrix.icon }} --channel ${{ matrix.channel }} --outputDir releases \
             --releaseNotes release-notes.md "${sign[@]}"
+
+      - name: Verify Windows signatures
+        if: env.WINDOWS_SIGN == 'true'
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem releases -Filter '*Setup.exe' | Select-Object -First 1
+          $portable = Get-ChildItem releases -Filter '*Portable.zip' | Select-Object -First 1
+          Expand-Archive $portable.FullName -DestinationPath "$env:RUNNER_TEMP/portable"
+          $app = Get-ChildItem "$env:RUNNER_TEMP/portable" -Recurse -Filter 'BoltShell.exe' | Select-Object -First 1
+          foreach ($file in @($setup, $app)) {
+            $signature = Get-AuthenticodeSignature $file.FullName
+            Write-Host "$($file.Name): $($signature.Status) – $($signature.SignerCertificate.Subject)"
+            if ($signature.Status -ne 'Valid') { throw "$($file.Name) is not validly signed." }
+          }
 
       - name: Verify macOS signature and notarization
         if: env.MACOS_SIGN == 'true'

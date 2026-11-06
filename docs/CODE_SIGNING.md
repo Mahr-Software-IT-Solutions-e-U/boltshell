@@ -60,7 +60,37 @@ with Velopack when the secrets below exist. Pull requests and forks build unsign
 `build/macos/entitlements.plist` contains the hardened-runtime exceptions the .NET runtime needs (JIT, unsigned
 executable memory, library validation off for the bundled native libraries).
 
-## Windows
+## Windows (Azure Artifact Signing)
 
-Not set up yet. Options: Azure Trusted Signing (`vpk pack --azureTrustedSignFile`), SignPath Foundation (free for open
-source, signs as "SignPath Foundation"), or a classic certificate via `--signParams` (signtool).
+Release builds (tags `v*`) sign `BoltShell.exe`, the bundled files and `Setup.exe` with Azure Artifact Signing
+(formerly Trusted Signing) through `vpk pack --azureTrustedSignFile`. Builds of `main` and pull requests stay unsigned
+because every signed file counts against the monthly quota. The workflow fails if `Setup.exe` or `BoltShell.exe` is
+not validly signed afterwards.
+
+### One-time setup (Azure portal)
+
+1. **Subscription** – register the resource provider `Microsoft.CodeSigning`.
+2. **Artifact Signing account** – create one (SKU *Basic* is enough), e.g. in West Europe; note its name and the
+   endpoint shown on the overview page (West Europe: `https://weu.codesigning.azure.net/`).
+3. **Identity validation** – assign yourself the role *Artifact Signing Identity Verifier* on the account, then
+   *Identity validations* → *New* → **Public** → **Organization**, with the company's documents. This takes a few days.
+4. **Certificate profile** – once validated: *Certificate profiles* → *Create* → **Public Trust**, select the
+   validation. Note the profile name. The certificate subject shows the company name to users.
+5. **App registration for CI** – Microsoft Entra ID → App registrations → *New* (e.g. `boltshell-ci`) → *Certificates
+   & secrets* → new client secret (note its expiry). On the Artifact Signing account (*Access control (IAM)*) assign
+   the app the role *Artifact Signing Certificate Profile Signer*.
+6. **GitHub** – repository → Settings → Secrets and variables → Actions:
+
+   | Kind | Name | Value |
+   |---|---|---|
+   | Secret | `AZURE_TENANT_ID` | Directory (tenant) ID |
+   | Secret | `AZURE_CLIENT_ID` | Application (client) ID of the app registration |
+   | Secret | `AZURE_CLIENT_SECRET` | the client secret value |
+   | Variable | `AZURE_SIGNING_ENDPOINT` | e.g. `https://weu.codesigning.azure.net/` |
+   | Variable | `AZURE_SIGNING_ACCOUNT` | Artifact Signing account name |
+   | Variable | `AZURE_SIGNING_PROFILE` | certificate profile name |
+
+Renew the client secret before it expires (Azure shows the date); a release build without valid credentials fails.
+
+SmartScreen still builds reputation per publisher: the first downloads of a newly signed publisher can still show a
+warning, which disappears as the signed releases are downloaded.
