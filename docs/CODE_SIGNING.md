@@ -16,15 +16,34 @@ with Velopack when the secrets below exist. Pull requests and forks build unsign
    them so they land in the login keychain next to their private keys.
 2. **Export** – in Keychain Access select *both* certificates (with their private keys) → *Export 2 items…* →
    `certificates.p12` with a strong password.
+   **Without a Mac** (Windows: *Git Bash* from Git for Windows, or Linux/WSL) – one private key and one signing
+   request are used for both certificates, so a single `.p12` holds both identities:
+
+   ```bash
+   openssl req -new -newkey rsa:2048 -nodes -keyout developer-id.key -out developer-id.csr \
+     -subj "/emailAddress=you@example.com/CN=Your Name/C=AT"
+   # upload developer-id.csr for "Developer ID Application" and again for "Developer ID Installer",
+   # download developerID_application.cer and developerID_installer.cer
+   curl -sO https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer
+   openssl x509 -inform DER -in developerID_application.cer -out application.pem
+   openssl x509 -inform DER -in developerID_installer.cer -out installer.pem
+   openssl x509 -inform DER -in DeveloperIDG2CA.cer -out intermediate.pem
+   cat installer.pem intermediate.pem > extra.pem
+   openssl pkcs12 -export -inkey developer-id.key -in application.pem -certfile extra.pem -name "Developer ID" \
+     -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1 -out certificates.p12
+   ```
+
+   The SHA1/3DES options produce a `.p12` that macOS' `security import` reads on every version. Keep
+   `developer-id.key` (or the `.p12`) somewhere safe, e.g. in Passbolt, and delete the loose files.
 3. **Notarization key** – App Store Connect → Users and Access → Integrations → App Store Connect API →
    Team Keys → **+** (access: *Developer*). Download the `.p8` (only possible once) and note *Key ID* and *Issuer ID*.
 4. **GitHub secrets** – repository → Settings → Secrets and variables → Actions → *New repository secret*:
 
    | Secret | Value |
    |---|---|
-   | `MACOS_CERTIFICATES_P12` | `base64 -i certificates.p12` |
+   | `MACOS_CERTIFICATES_P12` | `base64 -i certificates.p12` (Linux/Git Bash: `base64 -w0 certificates.p12`) |
    | `MACOS_CERTIFICATES_PASSWORD` | password of the `.p12` |
-   | `APPLE_API_KEY_P8` | `base64 -i AuthKey_XXXXXXXXXX.p8` |
+   | `APPLE_API_KEY_P8` | `base64 -i AuthKey_XXXXXXXXXX.p8` (Linux/Git Bash: `base64 -w0 …`) |
    | `APPLE_API_KEY_ID` | Key ID |
    | `APPLE_API_ISSUER_ID` | Issuer ID |
 
