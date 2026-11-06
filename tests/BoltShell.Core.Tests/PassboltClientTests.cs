@@ -191,6 +191,27 @@ public class PassboltClientTests
         Assert.Contains("v4", ex.Message);
     }
 
+    [Theory]
+    [InlineData("totp", "/mfa/verify/totp.json", "totp", "123456")]
+    [InlineData("yubikey", "/mfa/verify/yubikey.json", "hotp", "cccccbcvftjghtjvukktjdhhnhfbcbtgbvlbrnbnlhgv")]
+    public async Task Mfa_IsVerifiedWithTheChosenProvider(string provider, string path, string field, string code)
+    {
+        var server = new FakePassboltServer { Mfa = ["totp", "yubikey", "duo"] };
+        using var client = new PassboltClient(Account(), server);
+
+        var login = await client.LoginAsync(TestKeys.UserPassphrase);
+        Assert.Equal(["totp", "yubikey", "duo"], login.MfaProviders);
+
+        await Assert.ThrowsAsync<PassboltApiException>(() => client.VerifyMfaAsync(provider, "000000"));
+        await client.VerifyMfaAsync(provider, code);
+        var (calledPath, body) = server.MfaVerifications[^1];
+        Assert.Equal(path, calledPath);
+        Assert.Equal(code, body[field]!.GetValue<string>());
+        Assert.False(body["remember"]!.GetValue<bool>());
+
+        await Assert.ThrowsAsync<NotSupportedException>(() => client.VerifyMfaAsync("duo", "x"));
+    }
+
     internal sealed class FakePassboltServer : HttpMessageHandler
     {
         private const string PasswordStringType = "a28a04cd-6f53-518a-967c-9963bf9cec51";
@@ -204,6 +225,10 @@ public class PassboltClientTests
         private bool _expiredOnce;
 
         public bool TamperVerifyToken { get; init; }
+
+        /// <summary>MFA providers announced in the login response; verifications are recorded in <see cref="MfaVerifications"/>.</summary>
+        public string[] Mfa { get; init; } = [];
+        public List<(string Path, JsonNode Body)> MfaVerifications { get; } = [];
         public int RefreshCalls { get; private set; }
 
         // Resource creation and sharing ("bob" uses the server test key so tests can decrypt his copy).
@@ -243,7 +268,13 @@ public class PassboltClientTests
                 return Error(HttpStatusCode.Unauthorized);
             }
 
-            if (request.Method == HttpMethod.Post && path == "/resources.json")
+            if (path.StartsWith("/mfa/verify/", StringComparison.Ordinal))
+            {
+                MfaVerifications.Add((path, payload!));
+                var code = payload!.AsObject().First(p => p.Key != "remember").Value!.GetValue<string>();
+                return code is "123456" or "cccccbcvftjghtjvukktjdhhnhfbcbtgbvlbrnbnlhgv" ? Ok(new JsonObject()) : Error(HttpStatusCode.BadRequest);
+            }
+                        if (request.Method == HttpMethod.Post && path == "/resources.json")
             {
                 var created = payload!.AsObject();
                 created["id"] = $"new-{Created.Count + 1}";
@@ -370,6 +401,9 @@ public class PassboltClientTests
                 ["access_token"] = _accessToken,
                 ["refresh_token"] = "refresh-1",
             };
+            // Like Passbolt's MfaJwtArmoredChallengeService: the providers are part of the encrypted challenge.
+            if (Mfa.Length > 0)
+                response["providers"] = new JsonArray(Mfa.Select(m => (JsonNode)JsonValue.Create(m)!).ToArray());
             return Ok(new JsonObject { ["challenge"] = EncryptFor(_userPublic, response.ToJsonString()) });
         }
 

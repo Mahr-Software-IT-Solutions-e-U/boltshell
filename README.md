@@ -23,7 +23,7 @@ Secrets are decrypted locally, only when a connection is opened.
   "BoltShell (private settings)" in each account (URI `boltshell://private-settings`, JSON in the encrypted note);
   each account only stores its own hosts, groups with the same name are merged for display
 - Quick connect (Ctrl+K): search hosts or connect directly to `user@host:port`
-- Passbolt login via JWT + OpenPGP, Passbolt v4 and v5 (encrypted metadata, shared metadata keys, custom fields), TOTP
+- Passbolt login via JWT + OpenPGP, Passbolt v4 and v5 (encrypted metadata, shared metadata keys, custom fields); MFA with TOTP or YubiKey (Duo and SSO not yet)
 - Password, keyboard-interactive and private-key authentication (incl. encrypted keys); servers that also ask for a one-time code get it from the Passbolt TOTP of the resource, otherwise the user is asked
 - Host identity from Passbolt (`ssh_host_key`, `rdp_cert_sha256`), otherwise trust-on-first-use with a warning on changed keys; sessions without a stored identity show a notice with a button to store it in Passbolt, a mismatch with Passbolt is refused and shown prominently (expected vs. presented fingerprint, replace only after explicit confirmation)
 - SFTP upload/download (files, folders, drag & drop) with progress and cancel; symlinked folders can be opened; SCP fallback for servers without SFTP

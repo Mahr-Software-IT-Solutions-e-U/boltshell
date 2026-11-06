@@ -7,5 +7,9 @@
   "Unlock": "Entsperren",
   "Wrong passphrase.": "Falsche Passphrase.",
   "Server unreachable: {0}": "Server nicht erreichbar: {0}",
-  "Unlock {0}": "{0} entsperren"
+  "Unlock {0}": "{0} entsperren",
+  "Your Passbolt account requires {0} as second factor, which BoltShell does not support yet. Set up TOTP (authenticator app) or a YubiKey in Passbolt under Profile › Multi-factor authentication.": "Dein Passbolt-Konto verlangt {0} als zweiten Faktor, das unterstützt BoltShell noch nicht. Richte in Passbolt unter Profil › Multi-Faktor-Authentifizierung TOTP (Authenticator-App) oder einen YubiKey ein.",
+  "Second factor": "Zweiter Faktor",
+  "YubiKey: insert it and touch the button": "YubiKey: einstecken und die Taste berühren",
+  "Authenticator app (TOTP)": "Authenticator-App (TOTP)"
 }

@@ -88,20 +88,11 @@
                             @if (!unlocked)
                             {
                                 <form class="inset" @onsubmit="() => UnlockAsync(account)" @onsubmit:preventDefault>
-                                    @if (account.MfaPending)
-                                    {
-                                        <label class="field" style="flex:1 1 260px">@Tr("One-time code (TOTP)")
-                                            <input class="input mono" inputmode="numeric" autocomplete="one-time-code" maxlength="6" @bind="_totp" @bind:event="oninput" />
-                                        </label>
-                                    }
-                                    else
-                                    {
-                                        <label class="field" style="flex:1 1 260px">@Tr("Passbolt key passphrase")
-                                            <input class="input" type="password" @bind="_passphrase" @bind:event="oninput" style="background:var(--card)" />
-                                        </label>
-                                    }
+                                    <label class="field" style="flex:1 1 260px">@Tr("Passbolt key passphrase")
+                                        <input class="input" type="password" @bind="_passphrase" @bind:event="oninput" style="background:var(--card)" />
+                                    </label>
                                     <button type="submit" class="btn btn-primary" style="height:40px" disabled="@(_busy == account.Id)">
-                                        @(_busy == account.Id ? Tr("Please wait…") : account.MfaPending ? Tr("Confirm") : Tr("Unlock"))
+                                        @(_busy == account.Id ? Tr("Please wait…") : Tr("Unlock"))
                                     </button>
                                     @if (_unlockError is { } err && _errorFor == account.Id)
                                     {
@@ -199,7 +190,6 @@
     private string? _addError;
 
     private string? _passphrase;
-    private string? _totp;
     private string? _busy;
     private string? _unlockError;
     private string? _errorFor;
@@ -287,15 +277,16 @@
         _errorFor = account.Id;
         try
         {
-            _unlockError = await UnlockDialog.UnlockAsync(account, _passphrase, _totp);
+            // The second factor (TOTP, YubiKey, …) is asked in the unlock dialog.
+            _unlockError = account.MfaPending ? null : await UnlockDialog.UnlockAsync(account, _passphrase, MfaProviders.Totp, null);
             _passphrase = null;
-            if (account.IsUnlocked)
-                _totp = null;
         }
         finally
         {
             _busy = null;
         }
+        if (account.MfaPending)
+            await UnlockDialog.ShowAsync(Dialogs, account);
     }
 
     private async Task RefreshAsync(AccountSession account)

@@ -24,5 +24,6 @@
   "{0} {1}: empty response": "{0} {1}: leere Antwort",
   "'{0}' is not a valid Passbolt address (https://…).": "„{0}“ ist keine gültige Passbolt-Adresse (https://…).",
   "Passbolt must be reachable via HTTPS; '{0}' was given with http://.": "Passbolt muss per HTTPS erreichbar sein; „{0}“ wurde mit http:// angegeben.",
-  "The resource's secret has no note field.": "Das Secret der Ressource hat kein Notizfeld."
+  "The resource's secret has no note field.": "Das Secret der Ressource hat kein Notizfeld.",
+  "The MFA method \"{0}\" is not supported by BoltShell yet.": "Das MFA-Verfahren „{0}“ wird von BoltShell noch nicht unterstützt."
 }
